@@ -1,0 +1,54 @@
+<modification>
+	<name>Corn Job Setting</name>
+	<id>Corn Job Setting</id>
+	<version>0.1</version>
+	<code>Corn Job Setting</code>
+	<author>Tanveer Yousuf(opencartextensions.in)</author>
+	<link>http://opencartextensions.in/</link>
+	
+	<file path="admin/view/template/common/menu.tpl">    
+		<operation error="log">
+			<search><![CDATA[<li id="reports"><a class="parent"><i class="fa fa-bar-chart-o fa-fw"></i> <span><?php echo $text_reports; ?></span></a>]]></search>
+			<add position="before" offset="1"><![CDATA[
+			<!--xml-->
+			 <li id="cornjobsetting"><a href="<?php echo $cron_job_setting; ?>"><i class="fa fa-cog fa-fw"></i><span><?php echo $text_cron_job_setting; ?></span></a></li>
+			<!--xml-->
+			]]></add>
+		</operation> 
+	</file>
+	
+	<file path="admin/language/*/common/menu.php">    
+		<operation error="log">
+			<search><![CDATA[// text]]></search>
+			<add position="after"><![CDATA[
+			///xml///
+			 $_['text_cron_job_setting'] = 'Cron Job Setting';
+			///xml///
+			]]></add>
+		</operation> 
+	</file>
+	
+	<file path="admin/controller/common/menu.php">    
+		<operation error="log">
+			<search><![CDATA[$data['text_reports'] = $this->language->get('text_reports');]]></search>
+			<add position="after"><![CDATA[
+			///xml///
+			 $data['text_cron_job_setting'] = $this->language->get('text_cron_job_setting');
+			///xml///
+			]]></add>
+		</operation> 
+	</file>
+	
+	<file path="admin/controller/common/menu.php">    
+		<operation error="log">
+			<search><![CDATA[$data['report_sale_order'] = $this->url->link('report/sale_order', 'token=' . $this->session->data['token'], true);]]></search>
+			<add position="after"><![CDATA[
+			///xml///
+			 $data['cron_job_setting'] = $this->url->link('custom/cron', 'token=' . $this->session->data['token'], true);
+			///xml///
+			]]></add>
+		</operation> 
+	</file>
+	
+	
+</modification>

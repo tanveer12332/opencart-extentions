@@ -1,0 +1,42 @@
+<modification>
+	<name>Checkout Cart Message</name>
+	<id>check_out_cart_message</id>
+	<version>0.1</version>
+	<code>Checkout Cart Message</code>
+	<author>Tanveer1(opencartextensions.in)</author>
+	<link>http://opencartextensions.in/</link>
+	
+	<file path="catalog/view/theme/*/template/checkout/cart.tpl">    
+		<operation error="log">
+			<search><![CDATA[<form action="<?php echo $action; ?>" method="post" enctype="multipart/form-data">]]></search>
+			<add position="after"><![CDATA[
+			<!--xml-->
+			<div class="alert alert-success"><i class="fa fa-exclamation-circle"></i> <?php echo $charges_appear; ?></div>
+			<!--xml-->
+			]]></add>
+		</operation> 
+			
+	</file>
+	
+	<file path="catalog/language/*/checkout/cart.php">    
+		<operation error="log">
+			<search><![CDATA[// text]]></search>
+			<add  position="after"><![CDATA[
+			//custon
+				$_['charges_appear']             = 'Charges will appear on your card on behalf of IT Networks Australia Pty Ltd.';
+			]]></add>
+		</operation> 
+	
+	</file>
+	
+	<file path="catalog/controller/checkout/cart.php">    
+		<operation error="log">
+			<search><![CDATA[$data['heading_title'] = $this->language->get('heading_title');]]></search>
+			<add  position="after"><![CDATA[
+			//custon
+				$data['charges_appear'] = $this->language->get('charges_appear');
+			]]></add>
+		</operation> 
+	
+	</file>
+</modification>

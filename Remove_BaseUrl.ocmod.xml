@@ -1,0 +1,23 @@
+<modification>
+	<name>Remove Base Url</name>
+	<id>TanveerRemoveBaseUrl</id>
+	<version>0.1</version>
+	<code>Tanveer Remove Base Url</code>
+	<author>Tanveer Yousuf(opencartextensions.in)</author>
+	<link>http://opencartextensions.in/</link>
+	
+	<file path="catalog/view/theme/*/template/common/header.tpl">    
+		<operation error="log">
+			<search position="replace"><![CDATA[<base href="<?php echo $base; ?>" />]]></search>
+			<add><![CDATA[
+			<!--xml-->
+			 <base href=""/>
+			<!--xml-->
+			]]></add>
+		</operation> 
+			
+	</file>
+	
+	
+	
+</modification>

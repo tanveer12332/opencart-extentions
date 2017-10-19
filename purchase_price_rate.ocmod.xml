@@ -1,0 +1,35 @@
+<modification>
+	<name>Purchase Price Rate</name>
+	<version>0.1</version>
+	<code>purchase_price_rate</code>
+	<link>http://www.opencartit.com</link>
+	<author>Tanveer Yousuf</author>
+	<file path="admin/language/*/setting/setting.php">
+		<operation error="skip">
+			<search><![CDATA[$_['heading_title']]]></search>
+			<add position="after"><![CDATA[$_['purchase_price'] = 'Purchase Price Rate %';]]></add>
+		</operation>
+	</file>
+
+	
+	
+	<file path="admin/controller/setting/setting.php">
+		<operation>
+			<search><![CDATA[$this->language->get('entry_length_class');]]></search>
+			<add position="after"><![CDATA[$data['purchase_price'] = $this->language->get('purchase_price');]]></add>
+		</operation>
+		
+	</file>
+	<file path="admin/view/template/setting/setting.tpl">
+		<operation>
+			<search><![CDATA[$entry_length_class;]]></search>
+			<add position="before" offset="1"><![CDATA[
+              <div class="form-group">
+                <label class="col-sm-2 control-label" for="input-length-class"><?php echo $purchase_price; ?></label>
+                <div class="col-sm-10">
+                  <input type="text" class="form-control" name="purchase_price" value="5" />
+                </div>
+              </div>]]></add>
+		</operation>
+	</file>
+</modification>

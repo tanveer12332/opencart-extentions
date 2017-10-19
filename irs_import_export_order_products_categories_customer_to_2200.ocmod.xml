@@ -1,0 +1,3666 @@
+<modification>
+    <id>irs_import_export_order_products_categories_customer_to_2101</id>
+    <version>2.0</version>
+    <vqmver>2.4.1</vqmver>
+    <author>IRSSOFT</author>
+	<name>irs_import_export_order_products_categories</name>
+
+<!--Orders Import-->
+<!--common Buttons-->
+        <file path="admin/language/en-gb/sale/order.php">
+        <operation>
+            <search position="after"><![CDATA[$_['heading_title']= 'Orders';]]></search>
+            <add><![CDATA[$_['button_import']='Import';$_['button_export']='Export';]]></add>
+        </operation>
+    </file>
+<file path="admin/language/en-gb/customer/customer.php">
+        <operation>
+            <search position="after"><![CDATA[$_['heading_title']= 'Customers';]]></search>
+            <add><![CDATA[$_['button_import']='Import';$_['button_export']='Export';]]></add>
+        </operation>
+    </file>
+<file path="admin/language/en-gb/catalog/category.php">
+        <operation>
+            <search position="after"><![CDATA[$_['heading_title']= 'Categories';]]></search>
+            <add><![CDATA[$_['button_import']= 'Import';$_['button_export'='Export';]]></add>
+        </operation>
+    </file>
+<file path="admin/language/en-gb/catalog/product.php">
+        <operation>
+            <search position="after"><![CDATA[$_['heading_title']='Products';]]></search>
+            <add><![CDATA[$_['button_import']='Import';$_['button_export']='Export';]]></add>
+        </operation>
+    </file>
+<!--Orders Import -->
+    <file path="admin/controller/sale/order.php">
+        <operation>
+            <search position="before"><![CDATA[$data['invoice'] = $this->url->link('sale/order/invoice', 'token=' . $this->session->data['token'], true);]]></search>
+            <add><![CDATA[$data['button_import'] = $this->language->get('button_import');
+                $data['import'] = $this->url->link('sale/order/irsorderimport', 'token=' . $this->session->data['token'],true);
+$data['button_export'] = $this->language->get('button_export');
+			  $data['export'] = $this->url->link('sale/order/orderexport', 'token=' . $this->session->data['token'],true);]]></add>
+        </operation>
+        <operation>
+            <search position="before"><![CDATA[public function getForm() {]]></search>
+            <add><![CDATA[
+        public function irsorderimport() {
+
+        $excel_field_error = 0;
+        $_SESSION['orderlist']=array();
+
+        $this->load->language('sale/order');
+        $this->load->model('sale/order');
+
+        $data['heading_title'] = "Import Order Data";
+
+        $data['entry_import'] = $this->language->get('Upload CSV File');
+
+        $data['entry_insertonly'] = $this->language->get('Insert Only');
+
+        $data['action'] = $this->url->link('sale/order/irsorderimport', 'token=' . $this->session->data['token'], 'SSL');
+
+        $data['importdataurl'] = $this->url->link('sale/order/importproducts', 'token=' . $this->session->data['token'],true);
+        $data['sampleexport'] = $this->url->link('sale/order/productsampleexport', 'token=' . $this->session->data['token'], true);
+        $data['sample_export'] = $this->language->get('Sample Csv File');
+
+        $data['breadcrumbs'] = array();
+
+        $data['breadcrumbs'][] = array(
+            'text'      => $this->language->get('text_home'),
+            'href'      => $this->url->link('common/home', 'token=' . $this->session->data['token'], 'SSL'),
+            'separator' => false
+        );
+
+        $data['breadcrumbs'][] = array(
+            'text'      => $this->language->get('heading_title'),
+            'href'      => $this->url->link('sale/order', 'token=' . $this->session->data['token'], 'SSL'),
+            'separator' => ' :: '
+        );
+
+
+        if(isset($_POST['submit']))
+        { 
+            $version_check=$_POST['opcversion'];
+ 
+            $insertonly=0;
+
+            if(isset($_POST['insertonly']) && $_POST['insertonly']==1)
+                $insertonly=1;
+
+            if($this->validateImport())
+            {  // import form validate start
+
+                if ((isset($this->request->files['file'])) && (is_uploaded_file($this->request->files['file']['tmp_name'])))
+                { //file upload start
+ 			if($version_check=="opc2200" || $version_check=="opc2302")
+						{ //opc version check start
+
+                    @set_time_limit(3600);
+                    if (substr(@ini_get("memory_limit"), 0, -1) < "512") {
+                        @ini_set("memory_limit", "512M");
+                    }
+                    ini_set("memory_limit", "512M");
+                    ini_set("max_execution_time", 180);
+                    ini_set('display_errors', 1);
+                    ini_set('log_errors', 1);
+                    error_reporting(E_ALL);
+                    //set_time_limit( 60 );
+
+                    $filename = $this->request->files['file']['tmp_name'];
+
+                    //chdir('../system/library/PHPExcel'); // change directory to PHPExcel library
+                    //require_once( 'Classes/PHPExcel.php' );
+                    //chdir('../../../admin');
+
+                    require_once('../system/library/PHPExcel/Classes/PHPExcel.php' );
+
+                    $inputFileType = PHPExcel_IOFactory::identify($filename);
+                    $objReader = PHPExcel_IOFactory::createReader($inputFileType);
+                    //$objReader->setReadDataOnly(true);
+                    $reader = $objReader->load($filename);
+                    $reader = &$reader;
+                    //			$this->clearCache();
+
+                    $xldata = $reader->getSheet(0);
+
+                    $isFirstRow = TRUE;
+
+                    $i = 0;
+
+                    $temp=0;//declared
+                    $b=0;//declared
+                    $option1=0;//declared
+                    $option2=0;//declared
+                   
+
+                    $k = $xldata->getHighestRow();
+                    $order_array = array();
+
+                    $columns = PHPExcel_Cell::columnIndexFromString($xldata->getHighestColumn());
+
+                    if($columns == 53)
+                    {
+                        for ($i = 0; $i < $k; $i++) {  // Excel row loop start
+                            //Skip the header row
+                            if ($isFirstRow) {
+                                $isFirstRow = FALSE;
+                                continue;
+                            }
+
+                            $invoice_no = $this->getCell($xldata, $i, 1);
+
+                            $currency = $this->getCell($xldata, $i, 2);
+                            $currency=$this->model_sale_order->getcurrencyid($currency);
+                            $customer = $this->getCell($xldata, $i, 3);
+
+                            $ip=$this->model_sale_order->getip();
+
+                            $customer_Group = $this->getCell($xldata, $i, 4);
+                            $customer_Group_id=$this->model_sale_order->getcustomergroupid($customer_Group);
+                            $firstname = $this->getCell($xldata, $i, 5);
+                            $lastname = $this->getCell($xldata, $i, 6);
+                            $email = $this->getCell($xldata, $i, 7);
+                            $telephone = $this->getCell($xldata, $i, 8);
+                            $fax = $this->getCell($xldata, $i, 9);
+
+                            //2.produtcs..
+                            $product = $this->getCell($xldata, $i, 10);
+				if(!empty($product)){ 
+                            $product_id=$this->model_sale_order->getproductid($product);//print_r($product_id);
+                            $product_details=$this->model_sale_order->getproductmodel($product_id);//print_r($product_details);
+				}else{
+				 $product_id="";
+ $product_details="";
+				}
+                            $quantity = $this->getCell($xldata, $i, 11);
+                            $reward = $this->model_sale_order->getproductreward($product_id);
+                            $reward_point_total = $quantity * $reward;
+                            //products option
+                            $total = $this->getCell($xldata, $i, 12);
+
+                            //$product_option_id=$this->model_sale_order->getproductoptionid($product_id);print_r($product_option_id);
+//                            $order_product_id=$this->model_sale_order->getorderproductid($order_id);//print_r($order_id);
+
+                            $optionname = $this->getCell($xldata, $i, 13);
+                            $optionvalue = $this->getCell($xldata, $i, 14);
+                            $optiontype = $this->getCell($xldata, $i, 15);
+
+                            $option_id=$this->model_sale_order->getoptionid($optionname);//print_r($option_id);
+							$product_option_id=$this->model_sale_order->getproductoptionid($option_id);//print_r($product_option_id);
+                            // print_r($option_id['option_id']);
+
+                            //$option_id
+                            $option_value_id=$this->model_sale_order->getoptionvalueid($optionvalue,$option_id);
+                            $product_option_value_id=$this->model_sale_order->getproductoptionvalueid($option_value_id,$option_id,$product_option_id);
+                            //voucher
+                            $description=$this->getCell($xldata, $i, 16);
+                            $vouchercode=$this->getCell($xldata, $i, 17);
+                            $recipient_name = $this->getCell($xldata, $i, 18);
+                            $recipient_email = $this->getCell($xldata, $i, 19);
+                            $senders_name = $this->getCell($xldata, $i, 20);
+                            $senders_email = $this->getCell($xldata, $i, 21);
+                            $gift_certificate_theme = $this->getCell($xldata, $i, 22);
+                            $gift_certificate_theme_id=$this->model_sale_order->getvoucherthemeid($gift_certificate_theme);
+                            $message = $this->getCell($xldata, $i, 23);
+                            $amount = $this->getCell($xldata, $i, 24);
+
+                            $user_agent = $this->request->server['HTTP_USER_AGENT'];
+                            //3.payment details
+                            $pyment_firstname = $this->getCell($xldata, $i, 25);
+                            $payment_lastname = $this->getCell($xldata, $i, 26);
+                            $pyment_company = $this->getCell($xldata, $i, 27);
+                            $payment_dddress1 = $this->getCell($xldata, $i, 28);
+                            $payment_dddress2 = $this->getCell($xldata, $i, 29);
+                            $payment_city = $this->getCell($xldata, $i, 30);
+                            $payment_postcode = $this->getCell($xldata, $i, 31);
+                            $payment_country = $this->getCell($xldata, $i, 32);
+                            $country_id=$this->model_sale_order->getcountryid($payment_country);
+                            $payment_region_state = $this->getCell($xldata, $i, 33);
+                            $state_zone_id=$this->model_sale_order->getstatezoneid($payment_region_state);
+
+                            //4.shipping details
+                            $shipping_firstname = $this->getCell($xldata, $i, 34);
+                            $shipping_lastname = trim($this->getCell($xldata, $i, 35));
+                            $shipping_company = $this->getCell($xldata, $i, 36);
+                            $shipping_address1 = $this->getCell($xldata, $i, 37);
+                            $shipping_address2 = $this->getCell($xldata, $i, 38);
+                            $shipping_city = $this->getCell($xldata, $i, 39);
+                            $shipping_postcode = $this->getCell($xldata, $i, 40);
+                            $shipping_country = $this->getCell($xldata, $i, 41);
+                            $shipping_region_state = $this->getCell($xldata, $i, 42);
+
+                            //5.Totals..
+                            //order Details..
+                            $shipping_method = $this->getCell($xldata, $i, 43);
+                            $payment_method = $this->getCell($xldata, $i, 44);
+                            $coupon = $this->getCell($xldata, $i, 45);
+                            $voucher = $this->getCell($xldata, $i, 46);
+                            $reward = $this->getCell($xldata, $i, 47);
+                            $order_status = $this->getCell($xldata, $i, 48);
+                            $order_status_id=$this->model_sale_order->getorderstatusid($order_status);
+                            $comment = $this->getCell($xldata, $i, 49);
+                            $affiliate = $this->getCell($xldata, $i, 50);
+
+                            /*$date_added = $this->getCell($xldata, $i, 54);
+                            $date = str_replace('/', '-',$date_added);
+                            $date_added_valuechange = date('Y-m-d H:i:s', strtotime($date));*/
+
+
+                            $custom_language_id=is_numeric($this->config->get('config_language_id'))?$this->config->get('config_language_id'):1;
+
+                            if($invoice_no!=='') {//validation of empty fields...........
+                                $temp++;$b=0; $option1=0;
+                                $order_array[$temp]['invoice_no'] = $invoice_no;
+                                $invoice_prefix = $this->config->get('config_invoice_prefix');
+                                // $store_id = $this->config->get('config_store_id');
+                                $store_id = 0;
+                                $store_name = $this->config->get('config_name');
+                                if ($store_id) {
+                                    $store_url = $this->config->get('config_url');
+                                } else {
+                                    $store_url = HTTP_SERVER;
+                                }
+
+                                $order_array[$temp]['invoice_prefix'] = $invoice_prefix;
+                                $order_array[$temp]['store_id'] = $store_id;
+                                $order_array[$temp]['store_name'] = $store_name;
+                                $order_array[$temp]['store_url'] = $store_url;
+
+                                $order_array[$temp]['customer_id'] = '';
+                                $order_array[$temp]['customer_group_id'] = $customer_Group_id;
+
+                                $order_array[$temp]['firstname'] = $firstname;
+                                $order_array[$temp]['lastname'] = $lastname;
+                                $order_array[$temp]['email'] = $email;
+                                $order_array[$temp]['telephone'] = $telephone;
+                                $order_array[$temp]['fax'] = $fax;
+//                                                        $order_array['custom_field'] = $custom_field;
+                                $order_array[$temp]['payment_firstname'] = $pyment_firstname;
+                                $order_array[$temp]['payment_lastname'] = $payment_lastname;
+                                $order_array[$temp]['payment_company'] = $pyment_company;
+                                $order_array[$temp]['payment_address_1'] = $payment_dddress1;
+                                $order_array[$temp]['payment_address_2'] = $payment_dddress2;
+                                $order_array[$temp]['payment_city'] = $payment_city;
+                                $order_array[$temp]['payment_postcode'] = $payment_postcode;
+                                $order_array[$temp]['payment_country'] = $payment_country;
+                                $order_array[$temp]['payment_country_id'] = $country_id;
+                                $order_array[$temp]['payment_zone'] = $payment_region_state;
+                                $order_array[$temp]['payment_zone_id'] = $state_zone_id;
+
+                                $order_array[$temp]['payment_address_format'] = '';
+//                              $order_array['payment_custom_field'] = $payment_custom_field;
+                                $order_array[$temp]['payment_method'] = $payment_method;
+                                /*$order_array['payment_code'] = $this->session->data['payment_method']['code'];*/
+                                $order_array[$temp]['payment_code'] = '';
+
+                                $order_array[$temp]['shipping_firstname'] = $shipping_firstname;
+                                $order_array[$temp]['shipping_lastname'] = $shipping_lastname;
+                                $order_array[$temp]['shipping_company'] = $shipping_company;
+                                $order_array[$temp]['shipping_address_1'] = $shipping_address1;
+                                $order_array[$temp]['shipping_address_2'] = $shipping_address2;
+                                $order_array[$temp]['shipping_city'] = $shipping_city;
+                                $order_array[$temp]['shipping_postcode'] = $shipping_postcode;
+                                $order_array[$temp]['shipping_country'] = $shipping_country;
+                                $order_array[$temp]['shipping_country_id'] = $country_id;
+                                $order_array[$temp]['shipping_zone'] = $payment_region_state;
+                                $order_array[$temp]['shipping_zone_id'] = $state_zone_id;
+
+                                $order_array[$temp]['shipping_address_format'] = '';
+//                                                        $order_array['shipping_custom_field'] =  $shipping_custom_field;
+                                $order_array[$temp]['shipping_method'] = $shipping_method;
+                                /* $order_array['shipping_code'] =  $this->session->data['shipping_method']['code'];*/
+                                $order_array[$temp]['shipping_code'] = '';
+                                $order_array[$temp]['tracking'] = '';
+                                $order_array[$temp]['accept_language'] = '';
+                                $order_array[$temp]['forwarded_ip'] = '';
+
+                                $order_array[$temp]['comment'] = $comment;
+                                //$order_array[$temp]['total'] = $total;
+                                $order_array[$temp]['order_status_id'] = $order_status_id;
+
+                                $order_array[$temp]['affiliate_id'] = 0;
+                                $order_array[$temp]['commission'] = 0.0000;
+                                $order_array[$temp]['marketing_id'] = 0;
+//                                                        $order_array['tracking'] =  $tracking ;
+                                $order_array[$temp]['language_id'] = $custom_language_id;
+
+                                $order_array[$temp]['currency_id'] = $currency['currency_id'];
+                                $order_array[$temp]['currency_code'] = $currency['code'];
+                                $order_array[$temp]['currency_value'] = $currency['value'];
+                                $order_array[$temp]['ip'] = $ip;
+//                                                        $order_array['forwarded_ip'] = $forwarded_ip  ;
+                                $order_array[$temp]['user_agent'] = $user_agent;
+//                                                        $order_array['accept_language'] = $accept_language  ;
+                                // $order_array[$temp]['date_added'] = $date_added_valuechange;
+                                //                                                        $order_array['date_modified'] = $date_modified  ;
+
+                                
+                                if($this->getCell($xldata, $i, 13)!=='')                              
+                                 {
+		                                	$order_option_data = array();
+			                                $order_option_data[] = array(
+			                                    'product_option_id' => $product_option_id,
+			                                    'product_option_value_id' => $product_option_value_id,
+			                                    'option_id' => $option_id,
+			                                    'option_value_id' => $option_value_id,
+			                                    'name' => $optionname,
+			                                    'value' => $optionvalue,
+			                                    'type' => $optiontype
+			                                );
+			
+			                                // $order_array['products'] = array();
+			                                $order_array[$temp]['products'][$option1] = array(
+			                                    'product_id' => $product_id,
+			                                    'name' => $product,
+			                                    'price' => $product_details['price'],
+			                                    'model' => $product_details['model'],
+			                                    'quantity' => $quantity,
+			                                    'total' => $total,
+			                                    'tax' => 0.0000,
+			                                    'reward' => $reward_point_total,
+			                                    'option' => $order_option_data
+			                                );
+								
+                                }
+								else 
+									{
+				 								$order_array[$temp]['products'][$option1] = array(
+			                                    'product_id' => $product_id,
+			                                    'name' => $product,
+			                                    'price' => $product_details['price'],
+			                                    'model' => $product_details['model'],
+			                                    'quantity' => $quantity,
+			                                    'total' => $total,
+			                                    'tax' => 0.0000,
+			                                    'reward' => $reward_point_total
+												);
+									}
+                                
+                    
+                                $order_data['vouchers'] = array();
+                                $order_array[$temp]['vouchers'][] = array(
+                                    'description' => $description,
+                                    'code' => $vouchercode,
+                                    'from_name' => $senders_name,
+                                    'from_email' => $senders_email,
+                                    'to_name' => $recipient_name,
+                                    'to_email' => $recipient_email,
+                                    'voucher_theme_id' => $gift_certificate_theme_id,
+                                    'message' => $message,
+                                    'amount' => $amount
+                                );
+                                $order_array[$temp]['totals']=array();
+
+                                $order_array[$temp]['totals'][$b] = array(
+                                    'code' => $this->getCell($xldata, $i, 51),
+                                    'title' => $this->getCell($xldata, $i, 52),
+                                    'value' => $this->getCell($xldata, $i, 53),
+                                    'sort_order' => ''
+                                );
+                                $b++;                               
+                            }//validation of empty fields....
+                           
+                           else {
+										     if($this->getCell($xldata, $i, 10)!=='')
+										     {	
+												 $order_option_data1=array();
+												 
+												  $order_option_data1[] = array(
+												'product_option_id' => $product_option_id,
+												'product_option_value_id' => $product_option_value_id,
+												'option_id' => $option_id,
+												'option_value_id' => $option_value_id,
+												'name' => $optionname,
+												'value' => $optionvalue,
+												'type' => $optiontype
+												 );						
+											    $option1++;
+										        $order_array_products_count = array(
+													'product_id' => $product_id,
+													'name' => $product,
+													'price' => $product_details['price'],
+													'model' => $product_details['model'],
+													'quantity' => $quantity,
+													'total' => $total,
+													'tax' => 0.0000,
+													'reward' => $reward_point_total,
+													'option' => $order_option_data1
+												);
+												$order_array[$temp]['products'][$option1]=$order_array_products_count;										
+											 }	
+											 							
+		                                     elseif($this->getCell($xldata, $i, 13)!=='')
+										 	 {
+												$order_option_data2 = array(
+												'product_option_id' => $product_option_id,
+												'product_option_value_id' => $product_option_value_id,
+												'option_id' => $option_id,
+												'option_value_id' => $option_value_id,
+												'name' => $optionname,
+												'value' => $optionvalue,
+												'type' => $optiontype
+												 );
+		
+												 array_push($order_array[$temp]['products'][$option1]['option'],$order_option_data2);									
+										
+											}	                        
+	                        
+	                             if($this->getCell($xldata, $i, 51)!=='')
+                                {
+                                $getlooping_totals = array(
+                                    'code' => $this->getCell($xldata, $i, 51),
+                                    'title' => $this->getCell($xldata, $i, 52),
+                                    'value' => $this->getCell($xldata, $i, 53),
+                                    'sort_order' => ''
+                                );
+                                $order_array[$temp]['totals'][$b]=$getlooping_totals;
+                                $b++;
+                                }
+								
+								//*****************************************			
+				                if("Total" == $this->getCell($xldata, $i, 52))
+				                {				
+				                    $order_array[$temp]['total'] = $this->getCell($xldata, $i, 53);//print_r($Total);
+				                    //echo $Flat_Shipping_Rate;exit;
+				                }
+								
+								//*****************************************
+						}                            
+                            
+
+                        } // Excel row loop end
+
+                          //print_r($order_array);exit;
+
+                        $order_list_data=$order_array;
+
+                    }
+                    else
+                    {
+                        $excel_field_error = 1;
+                    }
+ }//opc version check end
+
+                } //file upload end
+
+                if(!$excel_field_error)
+                {
+
+                    $data['sampletabledata']= $order_list_data;
+
+                    $_SESSION['orderlist'] = $order_list_data;
+                }
+
+            } // import form validate end
+
+        }
+
+        if (isset($this->error['warning'])) {
+            $data['error_warning'] = $this->error['warning'];
+        } else {
+            $data['error_warning'] = '';
+        }
+
+        if (isset($this->error['errorfile'])) {
+            $data['error_file'] = $this->error['errorfile'];
+        } else {
+            $data['error_file'] = '';
+        }
+
+        if (isset($this->error['errorfile_opcversion'])) {
+            $data['error_file_opcversion'] = $this->error['errorfile_opcversion'];
+        } else {
+            $data['error_file_opcversion'] = '';
+        }
+
+        if($excel_field_error)
+        {
+            $data['error_fields'] = 'Upload like our Sample Excel File';
+        }
+        else
+        {
+            $data['error_fields'] = '';
+        }
+
+        /* $this->load->model('design/layout');
+       $data['layouts']=$this->model_design_layout->getLayouts();*/
+
+        $data['header']=$this->load->controller('common/header');
+        $data['footer']=$this->load->controller('common/footer');
+        $data['column_left']=$this->load->controller('common/column_left');
+
+        if (isset($this->request->server['HTTPS']) && (($this->request->server['HTTPS'] == 'on') || ($this->request->server['HTTPS'] == '1'))) {
+            $data['base'] = $this->config->get('config_ssl');
+        } else {
+            $data['base'] = $this->config->get('config_url');
+        }
+
+        $this->response->setOutput($this->load->view('sale/orders_import.tpl',$data));
+
+    }
+
+    public function importproducts(){
+
+        unset($_SESSION['orderlist']);
+        $url = '';
+        $this->response->redirect($this->url->link('sale/order', 'token=' . $this->session->data['token'] . $url, 'SSL'));
+    }
+
+    function getCell(&$worksheet, $row, $col, $default_val = '') {
+        $col -= 1; // we use 1-based, PHPExcel uses 0-based column index
+        $row += 1; // we use 0-based, PHPExcel used 1-based row index
+        return ($worksheet->cellExistsByColumnAndRow($col, $row)) ? $worksheet->getCellByColumnAndRow($col, $row)->getValue() : $default_val;
+    }
+
+    public function productsampleexport()
+    {
+        /* Include PHPExcel class */
+        //chdir('../system/library/PHPExcel');
+        //require_once( 'Classes/PHPExcel.php' );
+        //chdir('../../../admin');
+
+        require_once('../system/library/PHPExcel/Classes/PHPExcel.php' );
+
+        // Instantiate a new PHPExcel object
+        $objPHPExcel = new PHPExcel();
+        // Set the active Excel worksheet to sheet 0
+        $objPHPExcel->setActiveSheetIndex(0);
+        // Initialise the Excel row number
+        $rowCount = 1;
+
+        /* Add Heading Row */
+
+        //1.customer details..
+//        $objPHPExcel->getActiveSheet()->SetCellValue('A'.$rowCount, 'Order_id');
+        $objPHPExcel->getActiveSheet()->SetCellValue('A'.$rowCount, 'Invoice_no');
+
+        $objPHPExcel->getActiveSheet()->SetCellValue('B'.$rowCount, 'Currency');
+        $objPHPExcel->getActiveSheet()->SetCellValue('C'.$rowCount, 'Customer');
+        $objPHPExcel->getActiveSheet()->SetCellValue('D'.$rowCount, 'Customer Group');
+        $objPHPExcel->getActiveSheet()->SetCellValue('E'.$rowCount, 'Customer First Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('F'.$rowCount, 'Customer Last Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('G'.$rowCount, 'Customer E-Mail');
+        $objPHPExcel->getActiveSheet()->SetCellValue('H'.$rowCount, 'Customer Telephone');
+        $objPHPExcel->getActiveSheet()->SetCellValue('I'.$rowCount, 'Customer Fax');
+
+        //2.produtcs..
+        //products
+        $objPHPExcel->getActiveSheet()->SetCellValue('J'.$rowCount, 'Product');
+        $objPHPExcel->getActiveSheet()->SetCellValue('K'.$rowCount, 'Quantity');
+        $objPHPExcel->getActiveSheet()->SetCellValue('L'.$rowCount, 'Total');
+        //products option
+        $objPHPExcel->getActiveSheet()->SetCellValue('M'.$rowCount, 'Product option Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('N'.$rowCount, 'Product option Value');
+        $objPHPExcel->getActiveSheet()->SetCellValue('O'.$rowCount, 'Product option Type');
+        //voucher
+        $objPHPExcel->getActiveSheet()->SetCellValue('P'.$rowCount, 'Voucher Description');
+        $objPHPExcel->getActiveSheet()->SetCellValue('Q'.$rowCount, 'Voucher Code');
+        $objPHPExcel->getActiveSheet()->SetCellValue('R'.$rowCount, 'Voucher Recipient Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('S'.$rowCount, 'Voucher Recipient Email');
+        $objPHPExcel->getActiveSheet()->SetCellValue('T'.$rowCount, 'Voucher Senders Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('U'.$rowCount, 'Voucher Senders Email');
+        $objPHPExcel->getActiveSheet()->SetCellValue('V'.$rowCount, 'Voucher Gift Certificate Theme');
+        $objPHPExcel->getActiveSheet()->SetCellValue('W'.$rowCount, 'Voucher Message');
+        $objPHPExcel->getActiveSheet()->SetCellValue('X'.$rowCount, 'Voucher Amount');
+        //3.payment details
+//        $objPHPExcel->getActiveSheet()->SetCellValue('V'.$rowCount, 'Choose Address');
+        $objPHPExcel->getActiveSheet()->SetCellValue('Y'.$rowCount, 'payment First Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('Z'.$rowCount, 'payment Last Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AA'.$rowCount, 'payment Company');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AB'.$rowCount, 'payment Address 1');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AC'.$rowCount, 'payment Address 2');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AD'.$rowCount, 'payment City');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AE'.$rowCount, 'payment Postcode');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AF'.$rowCount, 'payment Country');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AG'.$rowCount, 'payment Region / State');
+
+        //4.shipping details
+//        $objPHPExcel->getActiveSheet()->SetCellValue('AF'.$rowCount, 'Choose Address');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AH'.$rowCount, 'Shipping First Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AI'.$rowCount, 'Shipping Last Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AJ'.$rowCount, 'Shipping Company');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AK'.$rowCount, 'Shipping Address 1');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AL'.$rowCount, 'Shipping Address 2');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AM'.$rowCount, 'Shipping City');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AN'.$rowCount, 'Shipping Postcode');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AO'.$rowCount, 'Shipping Country');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AP'.$rowCount, 'Shipping Region / State');
+
+        //5.Totals..
+        //order Details..
+        $objPHPExcel->getActiveSheet()->SetCellValue('AQ'.$rowCount, 'Shipping Method');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AR'.$rowCount, 'Payment Method');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AS'.$rowCount, 'Coupon');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AT'.$rowCount, 'Voucher');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AU'.$rowCount, 'Reward');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AV'.$rowCount, 'Order Status');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AW'.$rowCount, 'Comment');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AX'.$rowCount, 'Affiliate');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AY'.$rowCount, 'Code');
+        $objPHPExcel->getActiveSheet()->SetCellValue('AZ'.$rowCount, 'Title');
+        $objPHPExcel->getActiveSheet()->SetCellValue('BA'.$rowCount, 'Value');
+        $objPHPExcel->getActiveSheet()->SetCellValue('BB'.$rowCount, 'Date_Added');
+
+
+        header("Content-Type: text/csv; charset=utf-8");
+        header('Content-Disposition: attachment;filename="order_list_'.date("Y m d G i s").'.csv"');
+        //header('Content-Disposition: attachment;filename="category_list_'.date("Y m d G i s").'.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        // Instantiate a Writer to create an OfficeOpenXML Excel .xlsx file
+        //$objWriter = new PHPExcel_Writer_Excel2007($objPHPExcel);
+        $objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel,'CSV');
+        // Write the Excel file to filename some_excel_file.xlsx in the current directory
+        //$objWriter->save('some_excel_file.xlsx');
+
+        /* Download CsV file in downloads */
+        $objWriter->save('php://output');
+
+//        chdir('../../..');
+    }
+    protected function validateImport() {
+        /*if (!$this->user->hasPermission('modify', 'sale/customer')) {
+            $this->error['warning'] = $this->language->get('error_permission');
+        }*/
+        if(!$_POST['opcversion']){
+	     $this->error['errorfile_opcversion'] = $this->language->get('Please Select upload Opencart version');
+        }
+
+        if (!$this->request->files['file']['tmp_name']) {
+            $this->error['errorfile'] = $this->language->get('Please Upload a Excel/CSV file');
+        }
+        elseif($_FILES["file"]["name"])
+        {
+            $allowedExts = array("csv", "xlsx", "xls");
+            $temp = explode(".", $_FILES["file"]["name"]);
+            $extension = end($temp);
+
+            if(!in_array($extension, $allowedExts))
+                $this->error['errorfile'] = $this->language->get('Please Upload a Excel/CSV file');
+        }
+
+        if (!$this->error) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+//orders Export
+    public function orderexport() {
+    	
+		if (isset($this->request->get['filter_order_id'])) {
+			$filter_order_id = $this->request->get['filter_order_id'];
+		} else {
+			$filter_order_id = null;
+		}
+
+		if (isset($this->request->get['filter_customer'])) {
+			$filter_customer = $this->request->get['filter_customer'];
+		} else {
+			$filter_customer = null;
+		}
+
+		if (isset($this->request->get['filter_order_status'])) {
+			$filter_order_status = $this->request->get['filter_order_status'];
+		} else {
+			$filter_order_status = null;
+		}
+
+		if (isset($this->request->get['filter_total'])) {
+			$filter_total = $this->request->get['filter_total'];
+		} else {
+			$filter_total = null;
+		}
+
+		if (isset($this->request->get['filter_date_added'])) {
+			$filter_date_added = $this->request->get['filter_date_added'];
+		} else {
+			$filter_date_added = null;
+		}
+
+		if (isset($this->request->get['filter_date_modified'])) {
+			$filter_date_modified = $this->request->get['filter_date_modified'];
+		} else {
+			$filter_date_modified = null;
+		}   
+		   
+		   $filter_data = array(
+			'filter_order_id'      => $filter_order_id,
+			'filter_customer'	   => $filter_customer,
+			'filter_order_status'  => $filter_order_status,
+			'filter_total'         => $filter_total,
+			'filter_date_added'    => $filter_date_added,
+			'filter_date_modified' => $filter_date_modified
+			
+		);
+
+		
+        
+        $orders = array();
+        
+        $orders_column=array();
+        
+        $this->load->model('sale/order');
+        
+		
+        $results = $this->model_sale_order->gettotalOrdersexport($filter_data); 
+		
+        $orders_list = array();
+		
+		$temp_count = 1;
+		$product_option_count = 1;
+		
+        	foreach ($results as $result) {
+        		$voucher_count = $temp_count;
+				$payment_temp =	$temp_count;
+				$total_temp = $temp_count;
+				$temp_j = 0;
+        		$customer_group_name = $this->model_sale_order->getcustomer_group_name($result['customer_group_id']);
+        		//start customer detail new temp variable set ( common field )
+				$orders_list[$temp_count]['invoice_no']            = $result['invoice_no'];
+				$orders_list[$temp_count]['currency_code']          = $result['currency_code'];
+				$orders_list[$temp_count]['customer']               = '';
+				$orders_list[$temp_count]['customer_group']          = $customer_group_name;
+				//customer
+				$orders_list[$temp_count]['firstname']          = $result['firstname'];
+				$orders_list[$temp_count]['lastname']          = $result['lastname'];
+				$orders_list[$temp_count]['email']          = $result['email'];
+				$orders_list[$temp_count]['telephone']          = $result['telephone'];
+				$orders_list[$temp_count]['fax']          = $result['fax']; 
+				// process products
+				$export_products = $this->model_sale_order->get_exportorder_product($result['order_id']);
+					foreach ($export_products as $export_product) {
+						if($temp_j == 0){
+							$orders_list[$temp_count]['product']           = $export_product['name'];				
+							$orders_list[$temp_count]['quantity']          = $export_product['quantity'];
+							$orders_list[$temp_count]['total']         	 = $export_product['total'];
+					   		$temp_j++;	
+						}
+						else{
+				            $orders_list[$temp_count]['invoice_no']            = '';
+							$orders_list[$temp_count]['currency_code']          = '';
+							$orders_list[$temp_count]['customer']               = '';
+							$orders_list[$temp_count]['customer_group']          = '';
+							//customer
+							$orders_list[$temp_count]['firstname']          = '';
+							$orders_list[$temp_count]['lastname']          = '';
+							$orders_list[$temp_count]['email']          = '';
+							$orders_list[$temp_count]['telephone']          = '';
+							$orders_list[$temp_count]['fax']          = '';
+					        $orders_list[$temp_count]['product']          = $export_product['name'];				
+							$orders_list[$temp_count]['quantity']          = $export_product['quantity'];
+							$orders_list[$temp_count]['total']          = $export_product['total'];
+							$temp_j++;	
+						}
+						
+						
+						// process options
+						$export_products_options = $this->model_sale_order->get_exportorder_product_option($result['order_id'],$export_product['order_product_id']);
+						if(!empty($export_products_options)){
+							$temp_i = 0;
+							foreach ($export_products_options as $export_products_option) {
+								if($temp_i == 0){
+									$orders_list[$temp_count]['option_name']	=$export_products_option['name'];
+									$orders_list[$temp_count]['option_value']	= $export_products_option['value'];
+									$orders_list[$temp_count]['option_type']	=$export_products_option['type'];
+									$temp_i++;
+									$temp_count++;
+								}else{
+									$orders_list[$temp_count]['invoice_no']            = '';
+									$orders_list[$temp_count]['currency_code']          = '';
+									$orders_list[$temp_count]['customer']               = '';
+									$orders_list[$temp_count]['customer_group']          = '';
+									//customer
+									$orders_list[$temp_count]['firstname']          = '';
+									$orders_list[$temp_count]['lastname']          = '';
+									$orders_list[$temp_count]['email']          = '';
+									$orders_list[$temp_count]['telephone']          = '';
+									$orders_list[$temp_count]['fax']          = '';
+									$orders_list[$temp_count]['product']          = '';
+									$orders_list[$temp_count]['quantity']          = '';
+									$orders_list[$temp_count]['total']          = '';
+									$orders_list[$temp_count]['option_name']	=$export_products_option['name'];
+									$orders_list[$temp_count]['option_value']	= $export_products_option['value'];
+									$orders_list[$temp_count]['option_type']	=$export_products_option['type'];							
+									$temp_i++;
+									$temp_count++;
+								}
+							} // eo option loop
+							////$temp_count++;
+					  	}// !empty check 
+					  	else{
+					  		$orders_list[$temp_count]['option_name']	='';
+							$orders_list[$temp_count]['option_value']	= '';
+							$orders_list[$temp_count]['option_type']	='';
+							$temp_count++;
+					  	}  
+				  	} // eo product loop
+
+				  	$temp_v = 0;
+				  	// process vouchers
+						$voucher_details = $this->model_sale_order->getvoucher_detatil($result['order_id']);
+						if(!empty($voucher_details))
+						{
+							foreach ($voucher_details as $voucher_detail) {
+								$voucher_theme_name = $this->model_sale_order->getvoucher_theme_name($voucher_detail['voucher_theme_id']);
+								if($temp_v == 0){
+								    $orders_list[$voucher_count]['voucher_description']   	= $voucher_detail['description'];
+									$orders_list[$voucher_count]['code']						= $voucher_detail['code'];
+									$orders_list[$voucher_count]['to_name']					= $voucher_detail['to_name'];
+									$orders_list[$voucher_count]['to_email']		   		    = $voucher_detail['to_email'];
+									$orders_list[$voucher_count]['from_name']				= $voucher_detail['from_name'];
+									$orders_list[$voucher_count]['from_email']				= $voucher_detail['from_email'];
+									$orders_list[$voucher_count]['gift_certificate_theme']	= $voucher_theme_name;
+									$orders_list[$voucher_count]['message']					= $voucher_detail['message'];
+									$orders_list[$voucher_count]['amount']					= $voucher_detail['amount'];
+									$temp_v++;
+									$voucher_count++;							
+								}
+								else{
+									$orders_list[$voucher_count]['invoice_no']            = '';
+									$orders_list[$voucher_count]['currency_code']          = '';
+									$orders_list[$voucher_count]['customer']               = '';
+									$orders_list[$voucher_count]['customer_group']          = '';
+									//customer
+									$orders_list[$voucher_count]['firstname']          = '';
+									$orders_list[$voucher_count]['lastname']          = '';
+									$orders_list[$voucher_count]['email']          = '';
+									$orders_list[$voucher_count]['telephone']          = '';
+									$orders_list[$voucher_count]['fax']          = '';
+									$orders_list[$voucher_count]['product']          = '';
+					
+									$orders_list[$voucher_count]['quantity']          = '';
+									$orders_list[$voucher_count]['total']          = '';
+									$orders_list[$voucher_count]['option_name']	='';
+									$orders_list[$voucher_count]['option_value']	= '';
+									$orders_list[$voucher_count]['option_type']	='';
+									
+									$orders_list[$voucher_count]['voucher_description']   	= $voucher_detail['description'];
+									$orders_list[$voucher_count]['code']						= $voucher_detail['code'];
+									$orders_list[$voucher_count]['to_name']					= $voucher_detail['to_name'];
+									$orders_list[$voucher_count]['to_email']		   		    = $voucher_detail['to_email'];
+									$orders_list[$voucher_count]['from_name']				= $voucher_detail['from_name'];
+									$orders_list[$voucher_count]['from_email']				= $voucher_detail['from_email'];
+									$orders_list[$voucher_count]['gift_certificate_theme']	= $voucher_theme_name;
+									$orders_list[$voucher_count]['message']					= $voucher_detail['message'];
+									$orders_list[$voucher_count]['amount']					= $voucher_detail['amount'];
+									$temp_v++;
+									$voucher_count++;
+								} // eo else
+							} // eo voucher foreach
+						} // eo empty check
+						else{
+					            $orders_list[$voucher_count]['voucher_description']   	= '';
+								$orders_list[$voucher_count]['code']						= '';
+								$orders_list[$voucher_count]['to_name']					= '';
+								$orders_list[$voucher_count]['to_email']		   		    = '';
+								$orders_list[$voucher_count]['from_name']				= '';
+								$orders_list[$voucher_count]['from_email']				= '';
+								$orders_list[$voucher_count]['gift_certificate_theme']	= '';
+								$orders_list[$voucher_count]['message']					= '';
+								$orders_list[$voucher_count]['amount']					= '';
+								$voucher_count++;
+			 	 		}
+				 
+				 	$order_status_name = $this->model_sale_order->getorder_status_name($result['order_status_id']); 	
+				 	//payment
+					$orders_list[$payment_temp]['payment_firstname']				= $result['payment_firstname'];
+					$orders_list[$payment_temp]['payment_lastname']					= $result['payment_lastname'];
+					$orders_list[$payment_temp]['payment_company']					= $result['payment_company'];
+					$orders_list[$payment_temp]['payment_address_1']				= $result['payment_address_1'];
+					$orders_list[$payment_temp]['payment_address_2']				= $result['payment_address_2'];
+					$orders_list[$payment_temp]['payment_city']				   	    = $result['payment_city'];
+					$orders_list[$payment_temp]['payment_postcode']					= $result['payment_postcode'];
+					$orders_list[$payment_temp]['payment_country']					= $result['payment_country'];
+					$orders_list[$payment_temp]['payment_zone']				    	= $result['payment_zone'];
+					//shipping
+					$orders_list[$payment_temp]['shipping_firstname']				= $result['shipping_firstname'];
+					$orders_list[$payment_temp]['shipping_lastname']				= $result['shipping_lastname'];
+					$orders_list[$payment_temp]['shipping_company']					= $result['shipping_company'];
+					$orders_list[$payment_temp]['shipping_address_1']				= $result['shipping_address_1'];
+					$orders_list[$payment_temp]['shipping_address_2']				= $result['shipping_address_2'];
+					$orders_list[$payment_temp]['shipping_city']				    = $result['shipping_city'];
+					$orders_list[$payment_temp]['shipping_postcode']				= $result['shipping_postcode'];
+					$orders_list[$payment_temp]['shipping_country']					= $result['shipping_country'];
+					$orders_list[$payment_temp]['shipping_zone']				    = $result['shipping_zone'];
+					$orders_list[$payment_temp]['shipping_method']					= $result['shipping_method'];
+					$orders_list[$payment_temp]['payment_method']					= $result['payment_method'];
+					
+					$orders_list[$payment_temp]['coupon']				   		    = (isset($result['coupon']) ? $result['coupon'] : "");
+					$orders_list[$payment_temp]['voucher']							= (isset($result['voucher']) ? $result['voucher'] : "");
+					$orders_list[$payment_temp]['reward']							= (isset($result['reward']) ? $result['reward'] : "");			
+					$orders_list[$payment_temp]['order_status']						= $order_status_name;
+					$orders_list[$payment_temp]['comment']				  		    = $result['comment'];
+					$orders_list[$payment_temp]['affiliate']				   	    = (isset($result['affiliate']) ? $result['affiliate'] : "");
+				
+					$temp_t = 0;
+					$export_totals = $this->model_sale_order->get_exportorder_total($result['order_id']); 
+				 	foreach ($export_totals as $export_total) {
+							$code = $export_total['code'];
+							$title = $export_total['title'];
+							$value = $export_total['value'];
+							if($temp_t == 0){
+								$temp_count++;
+								$orders_list[$total_temp]['total_code']    = $code;
+								$orders_list[$total_temp]['total_title']   = $title;
+								$orders_list[$total_temp]['total_value']   = $value;
+								$temp_t++;
+		                    }
+		                    else{
+								$orders_list[$total_temp]['invoice_no']            = '';
+								$orders_list[$total_temp]['currency_code']          = '';
+								$orders_list[$total_temp]['customer']               = '';
+								$orders_list[$total_temp]['customer_group']          = '';
+								//customer
+								$orders_list[$total_temp]['firstname']          = '';
+								$orders_list[$total_temp]['lastname']          = '';
+								$orders_list[$total_temp]['email']          = '';
+								$orders_list[$total_temp]['telephone']          = '';
+								$orders_list[$total_temp]['fax']          = '';
+								
+																
+								if(isset($orders_list[$total_temp]['product'])){
+									$orders_list[$total_temp]['product'] = $orders_list[$total_temp]['product'];	
+								}else{
+									$orders_list[$total_temp]['product'] = '';
+								}
+								
+								if(isset($orders_list[$total_temp]['quantity'])){
+									$orders_list[$total_temp]['quantity'] = $orders_list[$total_temp]['quantity'];	
+								}else{
+									$orders_list[$total_temp]['quantity'] = '';
+								}
+								
+								if(isset($orders_list[$total_temp]['total'])){
+									$orders_list[$total_temp]['total'] = $orders_list[$total_temp]['total'];	
+								}else{
+									$orders_list[$total_temp]['total'] = '';
+								}
+								
+							
+								
+								
+								
+								if(isset($orders_list[$total_temp]['option_name'])){
+									$orders_list[$total_temp]['option_name'] = $orders_list[$total_temp]['option_name'];	
+								}else{
+									$orders_list[$total_temp]['option_name'] = '';
+								}
+								
+								
+								if(isset($orders_list[$total_temp]['option_type'])){
+									$orders_list[$total_temp]['option_type'] = $orders_list[$total_temp]['option_type'];	
+								}else{
+									$orders_list[$total_temp]['option_type'] = '';
+								}
+								
+								if(isset($orders_list[$total_temp]['option_value'])){
+									$orders_list[$total_temp]['option_value'] = $orders_list[$total_temp]['option_value'];	
+								}else{
+									$orders_list[$total_temp]['option_value'] = '';
+								}
+								
+								
+								
+	               	  	        $orders_list[$total_temp]['voucher_description']   	= '';
+								$orders_list[$total_temp]['code']						= '';
+								$orders_list[$total_temp]['to_name']					= '';
+								$orders_list[$total_temp]['to_email']		   		    = '';
+								$orders_list[$total_temp]['from_name']				= '';
+								$orders_list[$total_temp]['from_email']				= '';
+								$orders_list[$total_temp]['gift_certificate_theme']	= '';
+								$orders_list[$total_temp]['message']					= '';
+								$orders_list[$total_temp]['amount']					= '';
+								$orders_list[$total_temp]['payment_firstname']				= '';
+								$orders_list[$total_temp]['payment_lastname']					= '';
+								$orders_list[$total_temp]['payment_company']					= '';
+								$orders_list[$total_temp]['payment_address_1']				= '';
+								$orders_list[$total_temp]['payment_address_2']				= '';
+								$orders_list[$total_temp]['payment_city']				   	    = '';
+								$orders_list[$total_temp]['payment_postcode']					= '';
+								$orders_list[$total_temp]['payment_country']					= '';
+								$orders_list[$total_temp]['payment_zone']				    	= '';
+								//shipping
+								$orders_list[$total_temp]['shipping_firstname']				= '';
+								$orders_list[$total_temp]['shipping_lastname']				= '';
+								$orders_list[$total_temp]['shipping_company']					= '';
+								$orders_list[$total_temp]['shipping_address_1']				= '';
+								$orders_list[$total_temp]['shipping_address_2']				= '';
+								$orders_list[$total_temp]['shipping_city']				    = '';
+								$orders_list[$total_temp]['shipping_postcode']				= '';
+								$orders_list[$total_temp]['shipping_country']					= '';
+								$orders_list[$total_temp]['shipping_zone']				    = '';
+								$orders_list[$total_temp]['shipping_method']					= '';
+								$orders_list[$total_temp]['payment_method']					= '';
+								
+								$orders_list[$total_temp]['coupon']				   		    = '';
+								$orders_list[$total_temp]['voucher']							= '';
+								$orders_list[$total_temp]['reward']							= '';
+								$orders_list[$total_temp]['order_status']						= '';
+								$orders_list[$total_temp]['comment']				  		    = '';
+								$orders_list[$total_temp]['affiliate']				   	    = '';
+								
+						        $orders_list[$total_temp]['total_code']    = $code;
+								$orders_list[$total_temp]['total_title']   = $title;
+								$orders_list[$total_temp]['total_value']   = $value;
+								$temp_t++;
+                        	}
+							$total_temp++;
+					  	} 
+
+
+				 
+				
+				
+//print_r($orders_list);exit;
+$temp_count++;
+}//Main loop end	
+		
+
+  //print_r($orders_list);exit;
+      
+        $orders_column = array('Invoice_no', 'Currency', 'Customer', 'Customer Group', 'Customer First Name', 'Customer Last Name', 'Customer E-Mail', 'Customer Telephone', 'Customer Fax', 'Product', 'Quantity', 'Total', 'Product option Name','Product option Value','Product option Type','Voucher Description', 'Voucher Code', 'Voucher Recipient Name','Voucher Recipient Email','Voucher Senders Name','Voucher Senders Email','Voucher Gift Certificate Theme','Voucher Message','Voucher Amount','payment First Name','payment Last Name','payment Company','payment Address 1','payment Address 2','payment City','payment Postcode','payment Country','payment Region / State','Shipping First Name','Shipping Last Name','Shipping Company','Shipping Address 1','Shipping Address 2','Shipping City','Shipping Postcode','Shipping Country','Shipping Region / State','Shipping Method','Payment Method','Coupon','Voucher','Reward','Order Status','Comment','Affiliate','Code','Title','Value');
+            
+      $orders[0]=   $orders_column;
+        
+        foreach($orders_list as $orders_row)
+        {
+            $orders[]=   $orders_row;
+        } 
+    
+        header( 'Content-Type: text/csv' );
+        header( 'Content-Disposition: attachment;filename="Order_list_'.date("Y m d G i s").'.csv"');
+		$out = fopen('php://output', 'w');
+
+		foreach ($orders as $fields) {
+		    fputcsv($out, $fields);
+		}
+		
+		fclose($out);
+	}
+
+    
+
+]]></add>
+        </operation>
+    </file>
+<file path="admin/model/sale/order.php">
+        <operation>
+            <search position="before"><![CDATA[public function getTotalEmailsByProductsOrdered($products) {]]></search>
+            <add><![CDATA[
+   //import functions
+    public function getcurrencyid($currency)
+    {
+        $query = $this->db->query("SELECT currency_id,code,value FROM " . DB_PREFIX . "currency WHERE code LIKE '" . $currency . "'");
+
+        // $query = $this->db->query("SELECT currency_id FROM . DB_PREFIX . "currency  WHERE title LIKE  = '" . $currency . "'");
+        if($query->row)
+            return $query->row;
+        else
+            return 0;
+        // $this->db->query("INSERT INTO `" . DB_PREFIX . "order` SET invoice_prefix = '" . $this->db->escape($data['invoice_prefix']) . "',store_id = '" . (int)$data['store_id'] . "',  customer_id = '" . (int)$data['customer_id'] . "', customer_group_id = '" . (int)$data['customer_group_id'] . "', firstname = '" . $this->db->escape($data['firstname']) . "', lastname = '" . $this->db->escape($data['lastname']) . "', email = '" . $this->db->escape($data['email']) . "', telephone = '" . $this->db->escape($data['telephone']) . "', fax = '" . $this->db->escape($data['fax']) . "',  payment_firstname = '" . $this->db->escape($data['payment_firstname']) . "', payment_lastname = '" . $this->db->escape($data['payment_lastname']) . "', payment_company = '" . $this->db->escape($data['payment_company']) . "', payment_address_1 = '" . $this->db->escape($data['payment_address_1']) . "', payment_address_2 = '" . $this->db->escape($data['payment_address_2']) . "', payment_city = '" . $this->db->escape($data['payment_city']) . "', payment_postcode = '" . $this->db->escape($data['payment_postcode']) . "', payment_country_id = '" . (int)$data['payment_country_id'] . "',  payment_zone_id = '" . (int)$data['payment_zone_id'] . "', payment_custom_field = '" . $this->db->escape(isset($data['payment_custom_field']) ? serialize($data['payment_custom_field']) : '') . "',  payment_method = '" . $this->db->escape($data['payment_method']) . "', payment_code = '" . $this->db->escape($data['payment_code']) . "', shipping_firstname = '" . $this->db->escape($data['shipping_firstname']) . "', shipping_lastname = '" . $this->db->escape($data['shipping_lastname']) . "', shipping_company = '" . $this->db->escape($data['shipping_company']) . "', shipping_address_1 = '" . $this->db->escape($data['shipping_address_1']) . "', shipping_address_2 = '" . $this->db->escape($data['shipping_address_2']) . "', shipping_city = '" . $this->db->escape($data['shipping_city']) . "', shipping_postcode = '" . $this->db->escape($data['shipping_postcode']) . "', shipping_country_id = '" . (int)$data['shipping_country_id'] . "',  shipping_zone_id = '" . (int)$data['shipping_zone_id'] . "', shipping_method = '" . $this->db->escape($data['shipping_method']) . "', shipping_code = '" . $this->db->escape($data['shipping_code']) . "', comment = '" . $this->db->escape($data['comment']) . "', total = '" . (float)$data['total'] . "', affiliate_id = '" . (int)$data['affiliate_id'] . "',order_status_id = '" . (int)$data['order_status_id'] . "', currency_id = '" . (int)$data['currency_id'] . "',   date_added = NOW(), date_modified = NOW()");
+        //$this->db->query("INSERT INTO `" . DB_PREFIX . "order` SET invoice_prefix = '" . $this->db->escape($data['invoice_prefix']) . "', store_id = '" . (int)$data['store_id'] . "', store_name = '" . $this->db->escape($data['store_name']) . "', store_url = '" . $this->db->escape($data['store_url']) . "', customer_id = '" . (int)$data['customer_id'] . "', customer_group_id = '" . (int)$data['customer_group_id'] . "', firstname = '" . $this->db->escape($data['firstname']) . "', lastname = '" . $this->db->escape($data['lastname']) . "', email = '" . $this->db->escape($data['email']) . "', telephone = '" . $this->db->escape($data['telephone']) . "', fax = '" . $this->db->escape($data['fax']) . "', custom_field = '" . $this->db->escape(isset($data['custom_field']) ? serialize($data['custom_field']) : '') . "', payment_firstname = '" . $this->db->escape($data['payment_firstname']) . "', payment_lastname = '" . $this->db->escape($data['payment_lastname']) . "', payment_company = '" . $this->db->escape($data['payment_company']) . "', payment_address_1 = '" . $this->db->escape($data['payment_address_1']) . "', payment_address_2 = '" . $this->db->escape($data['payment_address_2']) . "', payment_city = '" . $this->db->escape($data['payment_city']) . "', payment_postcode = '" . $this->db->escape($data['payment_postcode']) . "', payment_country = '" . $this->db->escape($data['payment_country']) . "', payment_country_id = '" . (int)$data['payment_country_id'] . "', payment_zone = '" . $this->db->escape($data['payment_zone']) . "', payment_zone_id = '" . (int)$data['payment_zone_id'] . "', payment_address_format = '" . $this->db->escape($data['payment_address_format']) . "', payment_custom_field = '" . $this->db->escape(isset($data['payment_custom_field']) ? serialize($data['payment_custom_field']) : '') . "', payment_method = '" . $this->db->escape($data['payment_method']) . "', payment_code = '" . $this->db->escape($data['payment_code']) . "', shipping_firstname = '" . $this->db->escape($data['shipping_firstname']) . "', shipping_lastname = '" . $this->db->escape($data['shipping_lastname']) . "', shipping_company = '" . $this->db->escape($data['shipping_company']) . "', shipping_address_1 = '" . $this->db->escape($data['shipping_address_1']) . "', shipping_address_2 = '" . $this->db->escape($data['shipping_address_2']) . "', shipping_city = '" . $this->db->escape($data['shipping_city']) . "', shipping_postcode = '" . $this->db->escape($data['shipping_postcode']) . "', shipping_country = '" . $this->db->escape($data['shipping_country']) . "', shipping_country_id = '" . (int)$data['shipping_country_id'] . "', shipping_zone = '" . $this->db->escape($data['shipping_zone']) . "', shipping_zone_id = '" . (int)$data['shipping_zone_id'] . "', shipping_address_format = '" . $this->db->escape($data['shipping_address_format']) . "', shipping_custom_field = '" . $this->db->escape(isset($data['shipping_custom_field']) ? serialize($data['shipping_custom_field']) : '') . "', shipping_method = '" . $this->db->escape($data['shipping_method']) . "', shipping_code = '" . $this->db->escape($data['shipping_code']) . "', comment = '" . $this->db->escape($data['comment']) . "', total = '" . (float)$data['total'] . "', affiliate_id = '" . (int)$data['affiliate_id'] . "', commission = '" . (float)$data['commission'] . "', marketing_id = '" . (int)$data['marketing_id'] . "', tracking = '" . $this->db->escape($data['tracking']) . "', language_id = '" . (int)$data['language_id'] . "', currency_id = '" . (int)$data['currency_id'] . "', currency_code = '" . $this->db->escape($data['currency_code']) . "', currency_value = '" . (float)$data['currency_value'] . "', ip = '" . $this->db->escape($data['ip']) . "', forwarded_ip = '" .  $this->db->escape($data['forwarded_ip']) . "', user_agent = '" . $this->db->escape($data['user_agent']) . "', accept_language = '" . $this->db->escape($data['accept_language']) . "', date_added = NOW(), date_modified = NOW()");
+    }
+    public function getcustomergroupid($customer_Group)
+    {
+        $query = $this->db->query("SELECT customer_group_id FROM " . DB_PREFIX . "customer_group_description WHERE name LIKE '" . $customer_Group . "'");
+
+        if($query->row)
+            return $query->row['customer_group_id'];
+        else
+            return 0;
+    }
+    public function getcountryid($payment_country)
+    {
+        $query = $this->db->query("SELECT country_id FROM " . DB_PREFIX . "country WHERE name LIKE '" . $payment_country . "'");
+
+        if($query->row)
+            return $query->row['country_id'];
+        else
+            return 0;
+    }
+    public function getstatezoneid($payment_region_state)
+    {
+        $query = $this->db->query("SELECT zone_id FROM " . DB_PREFIX . "zone WHERE name LIKE '" . $payment_region_state . "'");
+
+        if($query->row)
+            return $query->row['zone_id'];
+        else
+            return 0;
+    }
+    public function getproductid($product)
+    {
+       
+         $query = $this->db->query('SELECT product_id FROM ' . DB_PREFIX . 'product_description WHERE name LIKE "'. $product.'"');
+      
+
+ 
+
+
+ if($query->row)
+            return $query->row['product_id'];
+        else
+            return 0;
+    }
+    public function getproductmodel($product_id)
+    {
+        $query = $this->db->query("SELECT model,price FROM " . DB_PREFIX . "product WHERE  product_id= '" . $product_id . "'");
+        if($query->row)
+            return $query->row;
+        else
+            return 0;
+    }
+    public function getproductreward($product_id)
+    {
+        $query = $this->db->query("SELECT points FROM " . DB_PREFIX . "product_reward WHERE  product_id= '" . $product_id . "'");
+        if($query->row)
+            return $query->row['points'];
+        else
+            return 0;
+    }
+	
+	
+	
+    public function getproductoptionid($option_id)
+    {
+        $product_option_query = $this->db->query("SELECT * FROM `" . DB_PREFIX . "product_option`  WHERE option_id = '" . (int)$option_id . "' ");
+
+        if($product_option_query->row)
+            return $product_option_query->row['product_option_id'];
+        else
+            return 0;
+    }
+    public function getorderproductid($order_id)
+    {
+        $query = $this->db->query("SELECT order_product_id FROM " . DB_PREFIX . "order_product WHERE  order_id= '" . $order_id . "'");
+
+        if($query->row)
+            return $query->row['order_product_id'];
+        else
+            return 0;
+    }
+
+    public function getoptionid($optionname)
+    {
+        $query = $this->db->query("SELECT option_id FROM " . DB_PREFIX . "option_description WHERE  name LIKE '" . $optionname . "'");
+
+        if($query->row)
+            return $query->row['option_id'];
+        else
+            return 0;
+    }
+
+    public function getoptionvalueid($optionvalue,$option_id)
+    {
+        $query = $this->db->query("SELECT * FROM `" . DB_PREFIX . "option_value_description` WHERE name LIKE '".$optionvalue."'AND option_id='".$option_id."' AND language_id = '" . (int)$this->config->get('config_language_id') . "'");
+
+        if($query->row)
+            return $query->row['option_value_id'];
+        else
+            return 0;
+    }
+    public function getproductoptionvalueid($option_value_id,$option_id,$product_option_id)
+    {
+        $query = $this->db->query("SELECT product_option_value_id FROM `" . DB_PREFIX . "product_option_value` WHERE option_value_id = '".$option_value_id."'AND option_id='".$option_id."' AND product_option_id = '" . (int)$product_option_id . "'");
+
+        if($query->row)
+            return $query->row['product_option_value_id'];
+        else
+            return 0;
+    }
+
+
+    public function getip()
+    {
+        $query = $this->db->query("SELECT ip FROM " . DB_PREFIX . "customer_ip ");
+
+        if($query->row)
+            return $query->row['ip'];
+        else
+            return 0;
+    }
+    public function getorderstatusid($order_status)
+    {
+        $query = $this->db->query("SELECT order_status_id FROM " . DB_PREFIX . "order_status WHERE name LIKE '" . $order_status . "'");
+
+        if($query->row)
+            return $query->row['order_status_id'];
+        else
+            return 0;
+    }
+    public function getvoucherthemeid($gift_certificate_theme)
+    {
+        $query = $this->db->query("SELECT voucher_theme_id FROM " . DB_PREFIX . "voucher_theme_description WHERE name LIKE '" . $gift_certificate_theme . "'");
+
+        if($query->row)
+            return $query->row['voucher_theme_id'];
+        else
+            return 0;
+    }
+//orders export
+    public function gettotalOrdersexport($data = array()) {
+		
+        $sql = "SELECT * FROM " . DB_PREFIX . "order o";
+		
+         if (isset($data['filter_order_status'])) {
+			$implode = array();
+
+			$order_statuses = explode(',', $data['filter_order_status']);
+
+			foreach ($order_statuses as $order_status_id) {
+				$implode[] = "o.order_status_id = '" . (int)$order_status_id . "'";
+			}
+
+			if ($implode) {
+				$sql .= " WHERE (" . implode(" OR ", $implode) . ")";
+			} else {
+
+			}
+		} else {
+			$sql .= " WHERE o.order_status_id > '0'";
+		}
+
+		if (!empty($data['filter_order_id'])) {
+			$sql .= " AND o.order_id = '" . (int)$data['filter_order_id'] . "'";
+		}
+
+		if (!empty($data['filter_customer'])) {
+			$sql .= " AND CONCAT(o.firstname, ' ', o.lastname) LIKE '%" . $this->db->escape($data['filter_customer']) . "%'";
+		}
+
+		if (!empty($data['filter_date_added'])) {
+			$sql .= " AND DATE(o.date_added) = DATE('" . $this->db->escape($data['filter_date_added']) . "')";
+		}
+
+		if (!empty($data['filter_date_modified'])) {
+			$sql .= " AND DATE(o.date_modified) = DATE('" . $this->db->escape($data['filter_date_modified']) . "')";
+		}
+
+		if (!empty($data['filter_total'])) {
+			$sql .= " AND o.total = '" . (float)$data['filter_total'] . "'";
+		}
+
+        $query = $this->db->query($sql);		
+	   
+        return $query->rows;
+	}
+	
+	public function getcustomer_group_name($customer_group_id) {
+		
+		$query = $this->db->query("SELECT name FROM " . DB_PREFIX . "customer_group_description WHERE customer_group_id = '" . (int)$customer_group_id . "'");
+
+        if($query->rows)
+            return $query->row['name'];
+        else
+            return '';
+	}
+
+    public function getvoucher_detatil($order_id) {
+	
+        $query = $this->db->query("SELECT * FROM `" . DB_PREFIX . "order_voucher` WHERE order_id = '" . (int)$order_id . "'");
+
+        return $query->rows;
+	}
+	 public function getvoucher_theme_name($voucher_theme_id) {
+	
+        $query = $this->db->query("SELECT name FROM `" . DB_PREFIX . "voucher_theme_description` WHERE voucher_theme_id = '" . (int)$voucher_theme_id . "'");
+ 
+        if($query->row)
+            return $query->row['name'];
+        else
+            return '';
+	}
+	  public function getorder_status_name($order_status_id) {
+	
+        $query = $this->db->query("SELECT name FROM `" . DB_PREFIX . "order_status` WHERE order_status_id = '" . (int)$order_status_id . "'");
+ 
+        if($query->row)
+            return $query->row['name'];
+        else
+            return '';
+	}
+	public function get_exportorder_total($order_id) {
+		$query = $this->db->query("SELECT * FROM " . DB_PREFIX . "order_total WHERE order_id = '" . (int)$order_id . "' ORDER BY sort_order");
+
+		return $query->rows;
+	}
+		
+	public function get_exportorder_product($order_id) {
+		$query = $this->db->query("SELECT * FROM " . DB_PREFIX . "order_product WHERE order_id = '" . (int)$order_id . "'");
+
+		return $query->rows;
+	}
+	
+	public function get_exportorder_product_option($order_id, $order_product_id) {
+		$query = $this->db->query("SELECT * FROM " . DB_PREFIX . "order_option WHERE order_id = '" . (int)$order_id . "' AND order_product_id = '" . (int)$order_product_id . "'");
+
+		return $query->rows;
+	}
+
+
+
+]]></add>
+        </operation>
+    </file>
+ <file path="admin/view/template/sale/order_list.tpl">
+        <operation>
+            <search position="after"><![CDATA[<div class="pull-right">]]></search>
+            <add><![CDATA[<a href="<?php echo $import; ?>" data-toggle="tooltip" title="<?php echo $button_import; ?>" class="btn btn-success"><i class="fa fa-arrow-down"></i></a>
+ <a href="<?php echo $export; ?>" data-toggle="tooltip" title="<?php echo "Export"; ?>" class="btn btn-success"><i class="fa fa-arrow-up"></i></a>]]></add>
+        </operation>
+    </file>
+<!--front end order import array values  passed model-->
+<file path="catalog/controller/checkout/confirm.php">
+        <operation>
+            <search position="before"><![CDATA[public function index() {]]></search>
+            <add><![CDATA[
+            public function passingordervalues() {
+
+		    $this->load->model('checkout/order');       
+		    foreach($_SESSION['orderlist'] as $data) {
+		    $Impot_order_values = $this->model_checkout_order->addOrder($data);			
+		    $order_id=$Impot_order_values;
+		    $order_status_id=$data['order_status_id'];//print_r($order_status_id);exit;			
+		    $Impot_order_values_order_status_id1 = $this->model_checkout_order->addOrder_status_id($order_status_id,$order_id);
+
+        }
+    }]]></add>
+        </operation>
+    </file>
+<file path="catalog/model/checkout/order.php">
+        <operation>
+            <search position="before"><![CDATA[public function editOrder($order_id, $data) {]]></search>
+            <add><![CDATA[
+            public function addOrder_status_id($order_status_id,$order_id)
+		    {    	
+			       $this->db->query("UPDATE `" . DB_PREFIX . "order` SET order_status_id = '" . (int)$order_status_id . "', date_modified = NOW() WHERE order_id = '" . (int)$order_id . "'");
+		    }]]></add>
+        </operation>
+    </file>
+
+<!--Customer Import-->
+<file path="admin/controller/customer/customer.php">
+        <operation>
+            <search position="after"><![CDATA[$data['delete'] = $this->url->link('customer/customer/delete', 'token=' . $this->session->data['token'] . $url, true);]]></search>
+            <add><![CDATA[$data['button_import'] = $this->language->get('button_import');
+        $data['import'] = $this->url->link('customer/customer/import', 'token=' . $this->session->data['token'] ,true);
+$data['button_export'] = $this->language->get('button_export');
+	$data['export'] = $this->url->link('customer/customer/customers_export', 'token=' . $this->session->data['token'],true);
+]]></add>
+        </operation>
+
+        <operation>
+            <search position="before"><![CDATA[protected function validateForm() {]]></search>
+            <add><![CDATA[public function import() {     
+    
+        $excel_field_error = 0;
+		
+        $_SESSION['customerlist']=array();
+
+        $this->load->language('customer/customer');
+        //$this->load->model('customer/customer');
+
+        $data['heading_title'] = "Import Customer Data";
+
+        $data['entry_import'] = $this->language->get('Upload CSV File');
+
+        $data['entry_insertonly'] = $this->language->get('Insert Only');
+
+        $data['action'] = $this->url->link('customer/customer/import', 'token=' . $this->session->data['token'], 'SSL');
+		//$version=$_POST['opcversion'];
+		
+
+        $data['importdataurl'] = $this->url->link('customer/customer/importcustomer', 'token=' . $this->session->data['token'], 'SSL');
+        $data['sampleexport'] = $this->url->link('customer/customer/customersampleexport', 'token=' . $this->session->data['token'], 'SSL');
+        $data['sample_export'] = $this->language->get('Sample Csv File');
+
+        $data['breadcrumbs'] = array();
+
+        $data['breadcrumbs'][] = array(
+            'text'      => $this->language->get('text_home'),
+            'href'      => $this->url->link('common/home', 'token=' . $this->session->data['token'], 'SSL'),
+            'separator' => false
+        );
+
+        $data['breadcrumbs'][] = array(
+            'text'      => $this->language->get('heading_title'),
+            'href'      => $this->url->link('customer/customer', 'token=' . $this->session->data['token'], 'SSL'),
+            'separator' => ' :: '
+        );
+
+
+        if(isset($_POST['submit']))
+        {
+        	
+        	$version_check=$_POST['opcversion'];	
+			
+            $insertonly=0;
+
+            if(isset($_POST['insertonly']) && $_POST['insertonly']==1)
+                $insertonly=1;
+
+            if($this->validateImport())
+            {  // import form validate start
+
+                if ((isset($this->request->files['file'])) && (is_uploaded_file($this->request->files['file']['tmp_name'])))
+                { //file upload start
+                   
+			            if($version_check=="opc2200" || $version_check=="opc2302" )
+						{ //opc version check start
+			 
+                    @set_time_limit(3600);
+                    if (substr(@ini_get("memory_limit"), 0, -1) < "512") {
+                        @ini_set("memory_limit", "512M");
+                    }
+                    ini_set("memory_limit", "512M");
+                    ini_set("max_execution_time", 180);
+                    ini_set('display_errors', 1);
+                    ini_set('log_errors', 1);
+                    error_reporting(E_ALL);
+                    //set_time_limit( 60 );
+
+                    $filename = $this->request->files['file']['tmp_name'];
+
+                    //chdir('../system/library/PHPExcel'); // change directory to PHPExcel library
+                    //require_once( 'Classes/PHPExcel.php' );
+                    //chdir('../../../admin');
+
+                    require_once('../system/library/PHPExcel/Classes/PHPExcel.php' );
+
+                    $inputFileType = PHPExcel_IOFactory::identify($filename);
+                    $objReader = PHPExcel_IOFactory::createReader($inputFileType);
+                    //$objReader->setReadDataOnly(true);
+                    $reader = $objReader->load($filename);
+                    $reader = &$reader;
+                    //			$this->clearCache();
+
+                    $xldata = $reader->getSheet(0);
+
+                    $isFirstRow = TRUE;
+
+                    $i = 0;
+
+                    $temp=0;//declared
+                    $b=0;//declared
+                    $temp_add=0;
+                    
+                   
+
+                    $k = $xldata->getHighestRow();
+					
+                    $customer_array = array();
+				    $customer_array_add=array();
+					
+                    $columns = PHPExcel_Cell::columnIndexFromString($xldata->getHighestColumn());
+
+                    if($columns == 25)
+                    {
+                        for ($i = 0; $i < $k; $i++) {  // Excel row loop start
+                            //Skip the header row
+                            if ($isFirstRow) {
+                                $isFirstRow = FALSE;
+                                continue;
+                            }
+
+                            $store_id = $this->getCell($xldata, $i, 1);
+                            $customer_firstname = $this->getCell($xldata, $i, 2);                            
+                            $customer_lastname = $this->getCell($xldata, $i, 3);
+                           // $ip=$this->model_sale_order->getip();
+                            $email = $this->getCell($xldata, $i, 4);                           
+                            $telephone = $this->getCell($xldata, $i, 5);
+                            $fax = $this->getCell($xldata, $i, 6);							
+                            $password = $this->getCell($xldata, $i, 7);				
+							
+                            //print_r($password1);exit;
+                            $salt = $this->getCell($xldata, $i, 8);
+							$wishlist = $this->getCell($xldata, $i, 9);
+                            $newsletter = $this->getCell($xldata, $i, 10);							
+							$customer_group_id = $this->getCell($xldata, $i, 11);
+							$ip = $this->getCell($xldata, $i, 12);
+							$status = $this->getCell($xldata, $i, 13);
+							$approved = $this->getCell($xldata, $i, 14);							
+							
+							$address_firstname = $this->getCell($xldata, $i, 15);
+							$address_lastname = $this->getCell($xldata, $i, 16);
+							$company = $this->getCell($xldata, $i, 17);
+							$company_id = $this->getCell($xldata, $i, 18);
+							$tax_id = $this->getCell($xldata, $i, 19);
+							$address_1 = $this->getCell($xldata, $i, 20);
+							$address_2 = $this->getCell($xldata, $i, 21);
+							$city = $this->getCell($xldata, $i, 22);
+							$postcode = $this->getCell($xldata, $i, 23);
+							$country_id = $this->getCell($xldata, $i, 24);
+							$zone_id = $this->getCell($xldata, $i, 25);			
+							//$customer_array[$temp]['zone'] = $zone;
+							//$customer_array[$temp]['country'] = $country;							
+						    //$this->load->model('sale/customer');
+							//$zone_id=$this->model_sale_customer->getZoneId($zone);//print_r($zone);
+					        //$country_id=$this->model_sale_customer->getCountryId($country);//print_r($zone);
+							if(isset($store_id)){
+								$temp++;
+								$temp_add=0;
+								$customer_array[$temp]['customer_group_id'] = $customer_group_id;
+                                $customer_array[$temp]['store_id'] = $store_id;
+                                $customer_array[$temp]['firstname'] = $customer_firstname;
+                                $customer_array[$temp]['lastname'] = $customer_lastname;
+                                $customer_array[$temp]['email'] = $email;
+                                $customer_array[$temp]['telephone'] = $telephone;
+                                $customer_array[$temp]['fax'] = $fax;
+								$customer_array[$temp]['custom_field'] = '';
+								$customer_array[$temp]['salt'] = $salt;
+								$customer_array[$temp]['password'] = $password;
+								$customer_array[$temp]['newsletter'] = $newsletter;
+								$customer_array[$temp]['ip'] = $ip;
+								$customer_array[$temp]['status'] = $status;
+								$customer_array[$temp]['approved'] = $approved;								
+								
+								$customer_array_add[$temp_add]['firstname'] = $address_firstname;
+								$customer_array_add[$temp_add]['lastname'] = $address_lastname;
+								
+								$customer_array_add[$temp_add]['company'] = $company;
+								$customer_array_add[$temp_add]['address_1'] = $address_1;
+								$customer_array_add[$temp_add]['address_2'] = $address_2;
+								$customer_array_add[$temp_add]['city'] = $city;
+								$customer_array_add[$temp_add]['postcode'] = $postcode;
+								$customer_array_add[$temp_add]['zone_id'] = $zone_id;
+								$customer_array_add[$temp_add]['country_id'] = $country_id;								
+								$customer_array_add[$temp_add]['custom_field'] = '';
+								
+								$customer_array[$temp]['address_fiels']=$customer_array_add;
+								}
+								else{
+								$temp_add++;
+								
+								$customer_array_add[$temp_add]['firstname'] = $address_firstname;
+								$customer_array_add[$temp_add]['lastname'] = $address_lastname;
+								
+								$customer_array_add[$temp_add]['company'] = $company;
+								$customer_array_add[$temp_add]['address_1'] = $address_1;
+								$customer_array_add[$temp_add]['address_2'] = $address_2;
+								$customer_array_add[$temp_add]['city'] = $city;
+								$customer_array_add[$temp_add]['postcode'] = $postcode;
+								$customer_array_add[$temp_add]['zone_id'] = $zone_id;
+								$customer_array_add[$temp_add]['country_id'] = $country_id;								
+								$customer_array_add[$temp_add]['custom_field'] = '';
+								$customer_array[$temp]['address_fiels']=$customer_array_add;
+							
+								}
+							   
+                     
+                            } // Excel row loop end
+
+                          
+
+                        $order_list_data=$customer_array;
+
+                    }
+                    else
+                    {
+                        $excel_field_error = 1;
+                    }
+					
+                    }//opc version check end
+                   
+                } //file upload end
+
+                if(!$excel_field_error)
+                {
+
+                    $data['sampletabledata']= $order_list_data;
+
+                    $_SESSION['customerlist'] = $order_list_data;
+                }
+
+            } // import form validate end
+
+       
+        }
+
+        if (isset($this->error['warning'])) {
+            $data['error_warning'] = $this->error['warning'];
+        } else {
+            $data['error_warning'] = '';
+        }
+
+        if (isset($this->error['errorfile'])) {
+            $data['error_file'] = $this->error['errorfile'];
+        } else {
+            $data['error_file'] = '';
+        }
+		
+		if (isset($this->error['errorfile_opcversion'])) {
+            $data['error_file_opcversion'] = $this->error['errorfile_opcversion'];
+        } else {
+            $data['error_file_opcversion'] = '';
+        }
+
+        if($excel_field_error)
+        {
+            $data['error_fields'] = 'Upload like our Sample Excel File';
+        }
+        else
+        {
+            $data['error_fields'] = '';
+        }
+
+        /* $this->load->model('design/layout');
+       $data['layouts']=$this->model_design_layout->getLayouts();*/
+
+        $data['header']=$this->load->controller('common/header');
+        $data['footer']=$this->load->controller('common/footer');
+        $data['column_left']=$this->load->controller('common/column_left');
+
+        if (isset($this->request->server['HTTPS']) && (($this->request->server['HTTPS'] == 'on') || ($this->request->server['HTTPS'] == '1'))) {
+            $data['base'] = $this->config->get('config_ssl');
+        } else {
+            $data['base'] = $this->config->get('config_url');
+        }
+
+        $this->response->setOutput($this->load->view('customer/customer_import.tpl',$data));
+
+    }
+
+
+
+    public function importcustomer(){
+
+        unset($_SESSION['customerlist']);
+        $url = '';
+        $this->response->redirect($this->url->link('customer/customer', 'token=' . $this->session->data['token'] . $url, 'SSL'));
+    }
+
+    function getCell(&$worksheet, $row, $col, $default_val = '') {
+        $col -= 1; // we use 1-based, PHPExcel uses 0-based column index
+        $row += 1; // we use 0-based, PHPExcel used 1-based row index
+        return ($worksheet->cellExistsByColumnAndRow($col, $row)) ? $worksheet->getCellByColumnAndRow($col, $row)->getValue() : $default_val;
+    }
+
+    public function customersampleexport()
+    {
+        /* Include PHPExcel class */
+        //chdir('../system/library/PHPExcel');
+        //require_once( 'Classes/PHPExcel.php' );
+        //chdir('../../../admin');
+
+        require_once('../system/library/PHPExcel/Classes/PHPExcel.php' );
+
+        // Instantiate a new PHPExcel object
+        $objPHPExcel = new PHPExcel();
+        // Set the active Excel worksheet to sheet 0
+        $objPHPExcel->setActiveSheetIndex(0);
+        // Initialise the Excel row number
+        $rowCount = 1;
+		
+       //customer field
+        $objPHPExcel->getActiveSheet()->SetCellValue('A'.$rowCount, 'Store_id');
+        $objPHPExcel->getActiveSheet()->SetCellValue('B'.$rowCount, 'Customer FirstName');
+        $objPHPExcel->getActiveSheet()->SetCellValue('C'.$rowCount, 'Customer LastName');
+        $objPHPExcel->getActiveSheet()->SetCellValue('D'.$rowCount, 'Email');
+        $objPHPExcel->getActiveSheet()->SetCellValue('E'.$rowCount, 'Telephone');
+        $objPHPExcel->getActiveSheet()->SetCellValue('F'.$rowCount, 'Fax');
+        $objPHPExcel->getActiveSheet()->SetCellValue('G'.$rowCount, 'Password');
+        $objPHPExcel->getActiveSheet()->SetCellValue('H'.$rowCount, 'Salt');
+        $objPHPExcel->getActiveSheet()->SetCellValue('I'.$rowCount, 'Wishlist');
+        $objPHPExcel->getActiveSheet()->SetCellValue('J'.$rowCount, 'Newsletter');
+        $objPHPExcel->getActiveSheet()->SetCellValue('K'.$rowCount, 'Customer_group_id');
+        $objPHPExcel->getActiveSheet()->SetCellValue('L'.$rowCount, 'IP');        //products option
+        $objPHPExcel->getActiveSheet()->SetCellValue('M'.$rowCount, 'Status');
+        $objPHPExcel->getActiveSheet()->SetCellValue('N'.$rowCount, 'Approved');
+		//address field
+      
+		$objPHPExcel->getActiveSheet()->SetCellValue('O'.$rowCount, 'Address Firstname');
+		$objPHPExcel->getActiveSheet()->SetCellValue('P'.$rowCount, 'Address Lastname');
+		$objPHPExcel->getActiveSheet()->SetCellValue('Q'.$rowCount, 'Company');
+		$objPHPExcel->getActiveSheet()->SetCellValue('R'.$rowCount, 'Company_id');
+		$objPHPExcel->getActiveSheet()->SetCellValue('S'.$rowCount, 'Tax Id');
+		$objPHPExcel->getActiveSheet()->SetCellValue('T'.$rowCount, 'Address 1');
+		$objPHPExcel->getActiveSheet()->SetCellValue('U'.$rowCount, 'Address 2');
+		$objPHPExcel->getActiveSheet()->SetCellValue('V'.$rowCount, 'City');
+		$objPHPExcel->getActiveSheet()->SetCellValue('W'.$rowCount, 'Postcode');
+		$objPHPExcel->getActiveSheet()->SetCellValue('X'.$rowCount, 'Country');
+		$objPHPExcel->getActiveSheet()->SetCellValue('Y'.$rowCount, 'Zone');
+        //voucher
+
+        header("Content-Type: text/csv; charset=utf-8");
+        header('Content-Disposition: attachment;filename="customer_list_'.date("Y m d G i s").'.csv"');
+        //header('Content-Disposition: attachment;filename="category_list_'.date("Y m d G i s").'.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        // Instantiate a Writer to create an OfficeOpenXML Excel .xlsx file
+        //$objWriter = new PHPExcel_Writer_Excel2007($objPHPExcel);
+        $objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel,'CSV');
+        // Write the Excel file to filename some_excel_file.xlsx in the current directory
+        //$objWriter->save('some_excel_file.xlsx');
+
+        /* Download CsV file in downloads */
+        $objWriter->save('php://output');
+
+//        chdir('../../..');
+    }
+    protected function validateImport() {
+         /*if (!$this->user->hasPermission('modify', 'sale/customer')) {
+            $this->error['warning'] = $this->language->get('error_permission');
+        }*/
+
+        if(!$_POST['opcversion']){
+	     $this->error['errorfile_opcversion'] = $this->language->get('Please Select upload version');
+        }
+		
+        if (!$this->request->files['file']['tmp_name']) {
+            $this->error['errorfile'] = $this->language->get('Please Upload a Excel/CSV file');
+        }
+        elseif($_FILES["file"]["name"])
+        {
+            $allowedExts = array("csv", "xlsx", "xls");
+            $temp = explode(".", $_FILES["file"]["name"]);
+            $extension = end($temp);
+
+            if(!in_array($extension, $allowedExts))
+                $this->error['errorfile'] = $this->language->get('Please Upload a Excel/CSV file');
+        }
+
+        if (!$this->error) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+//export customer
+public function customers_export(){    
+        
+       	if (isset($this->request->get['filter_name'])) {
+			$filter_name = $this->request->get['filter_name'];
+		} else {
+			$filter_name = null;
+		}
+
+		if (isset($this->request->get['filter_email'])) {
+			$filter_email = $this->request->get['filter_email'];
+		} else {
+			$filter_email = null;
+		}
+		
+		if (isset($this->request->get['filter_customer_group_id'])) {
+			$filter_customer_group_id = $this->request->get['filter_customer_group_id'];
+		} else {
+			$filter_customer_group_id = null;
+		}
+
+		if (isset($this->request->get['filter_status'])) {
+			$filter_status = $this->request->get['filter_status'];
+		} else {
+			$filter_status = null;
+		}
+		
+		if (isset($this->request->get['filter_approved'])) {
+			$filter_approved = $this->request->get['filter_approved'];
+		} else {
+			$filter_approved = null;
+		}	
+
+		if (isset($this->request->get['filter_ip'])) {
+			$filter_ip = $this->request->get['filter_ip'];
+		} else {
+			$filter_ip = null;
+		}				
+
+		if (isset($this->request->get['filter_date_added'])) {
+			$filter_date_added = $this->request->get['filter_date_added'];
+		} else {
+			$filter_date_added = null;
+		}
+
+        
+        	$data = array(
+			'filter_name'              => $filter_name, 
+			'filter_email'             => $filter_email, 
+			'filter_customer_group_id' => $filter_customer_group_id,
+			'filter_status'            => $filter_status,
+			'filter_approved'          => $filter_approved, 
+			'filter_date_added'        => $filter_date_added,
+			'filter_ip'                => $filter_ip,
+			
+		);
+		
+		 $customers_list = array();
+		 $temp_cus = 1;
+		 $temp_add = 0;
+		 
+		$b=1;
+		$customers_list_add=array();
+		 
+		$this->load->model('customer/customer');
+		
+        $results = $this->model_customer_customer->getCustomerstoexport($data);//print_r($results);exit;       
+        
+        
+        foreach ($results as $result) {
+        	
+        	//$customers_list[$temp_count]['customer_id']        			= $result['customer_id'];
+        	$customers_list[$temp_cus]['store_id']        				= $result['store_id'];
+            $customers_list[$temp_cus]['firstname']        				= $result['firstname'];
+			$customers_list[$temp_cus]['lastname']        				= $result['lastname'];
+			$customers_list[$temp_cus]['email']        			   		= $result['email'];
+			$customers_list[$temp_cus]['telephone']        				= $result['telephone'];
+			$customers_list[$temp_cus]['fax']        					= $result['fax'];
+			$customers_list[$temp_cus]['password']        				= $result['password'];
+			$customers_list[$temp_cus]['salt']        					= $result['salt'];
+//			$customers_list[$temp_cus]['cart']        					= $result['cart'];
+			$customers_list[$temp_cus]['wishlist']        				= $result['wishlist'];
+			$customers_list[$temp_cus]['newsletter']        			= $result['newsletter'];
+			//$customers_list[$temp_count]['address_id']        			= $result['address_id'];
+			$customers_list[$temp_cus]['customer_group_id']        		= $result['customer_group_id'];
+			$customers_list[$temp_cus]['ip']        					= $result['ip'];
+			$customers_list[$temp_cus]['status']        				= $result['status'];
+			$customers_list[$temp_cus]['approved']        				= $result['approved'];//
+			
+			
+			$customer_address = $this->model_customer_customer->getAddresstoexport($result['customer_id']);
+			  //print_r($customer_address);exit;       
+			$a=1;
+			//address table
+			//$customers_list[$temp_count]['customer_id']        		= $result['c_customer_id'];
+			foreach ($customer_address as $customer_address1) {
+				if($a==$b){
+					$customers_list[$temp_cus]['address_firstname']        			= $customer_address1['firstname'];
+					$customers_list[$temp_cus]['address_lastname']        			= $customer_address1['lastname'];
+					$customers_list[$temp_cus]['company']        					= $customer_address1['company'];
+					$customers_list[$temp_cus]['company_id']        				= '';
+					$customers_list[$temp_cus]['tax_id']        					= '';
+					$customers_list[$temp_cus]['adddress_1']        				= $customer_address1['address_1'];
+					$customers_list[$temp_cus]['adddress_2']        				= $customer_address1['address_2'];
+					$customers_list[$temp_cus]['city']        						= $customer_address1['city'];
+					$customers_list[$temp_cus]['postcode']        					= $customer_address1['postcode'];
+					$customers_list[$temp_cus]['country_id']        				= $customer_address1['country_id'];
+					$customers_list[$temp_cus]['zone_id']        					= $customer_address1['zone_id'];
+				}
+				else{
+					$customers_list[$temp_cus]['store_id']        				= '';
+		            $customers_list[$temp_cus]['firstname']        				= '';
+					$customers_list[$temp_cus]['lastname']        				= '';
+					$customers_list[$temp_cus]['email']        			   		= '';
+					$customers_list[$temp_cus]['telephone']        				= '';
+					$customers_list[$temp_cus]['fax']        					= '';
+					$customers_list[$temp_cus]['password']        				= '';
+					$customers_list[$temp_cus]['salt']        					= '';
+					//$customers_list[$temp_add]['cart']        					= '';
+					$customers_list[$temp_cus]['wishlist']        				= '';
+					$customers_list[$temp_cus]['newsletter']        			= '';
+					//$customers_list[$temp_count]['address_id']        			= $result['address_id'];
+					$customers_list[$temp_cus]['customer_group_id']        		= '';
+					$customers_list[$temp_cus]['ip']        					= '';
+					$customers_list[$temp_cus]['status']        				= '';
+					$customers_list[$temp_cus]['approved']        				= '';//
+					$customers_list[$temp_cus]['address_firstname']        			= $customer_address1['firstname'];
+					$customers_list[$temp_cus]['address_lastname']        			= $customer_address1['lastname'];
+					$customers_list[$temp_cus]['company']        					= $customer_address1['company'];
+					$customers_list[$temp_cus]['company_id']        				= '';
+					$customers_list[$temp_cus]['tax_id']        					= '';
+					$customers_list[$temp_cus]['adddress_1']        				= $customer_address1['address_1'];
+					$customers_list[$temp_cus]['adddress_2']        				= $customer_address1['address_2'];
+					$customers_list[$temp_cus]['city']        						= $customer_address1['city'];
+					$customers_list[$temp_cus]['postcode']        					= $customer_address1['postcode'];
+					$customers_list[$temp_cus]['country_id']        				= $customer_address1['country_id'];
+					$customers_list[$temp_cus]['zone_id']        					= $customer_address1['zone_id'];
+					
+			 }
+				$temp_cus++; $a++;
+		 }
+			//$customers_list[$temp_cus]['address_field']=$customers_list_add;
+            $temp_cus++;
+        }  
+
+
+        //print_r($customers_list);exit;  
+        $customers = array();
+        
+        $customers_column=array();        
+		        
+        $customers_column = array('Store_id','Customer FirstName','Customer LastName','Email', 'Telephone','Fax','Password','Salt','Wishlist','Newsletter','Customer_group_id','IP','Status','Approved','Address Firstname','Address Lastname','Company','Company_id','Tax Id','Address 1','Address 2','City','Postcode', 'Country', 'Zone');
+            
+        $customers[0] = $customers_column;          
+  
+        foreach($customers_list as $customer_row)
+        {
+            $customers[]=$customer_row;
+        }
+     
+                        header( 'Content-Type: text/csv' );
+				        header( 'Content-Disposition: attachment;filename="Customer_List_'.date("Y m d G i s").'.csv"');
+						$out = fopen('php://output', 'w');
+				
+						foreach ($customers as $fields) {
+						    fputcsv($out, $fields);
+						}
+						
+						fclose($out);
+	     }
+]]></add>
+        </operation>
+    </file>
+ <file path="admin/model/customer/customer.php">
+        <operation>
+            <search position="before"><![CDATA[public function editCustomer($customer_id, $data) {]]></search>
+            <add><![CDATA[ public function getCustomerstoexport($data = array())         {									
+								
+		$query = $this->db->query("SELECT * FROM " . DB_PREFIX . "customer");
+
+		return $query->rows;							
+					
+	}
+	
+	public function getAddresstoexport($customer_id) {									
+								
+		$query = $this->db->query("SELECT * FROM " . DB_PREFIX . "address WHERE customer_id= '". (int)$customer_id ."'");
+
+		return $query->rows;							
+					
+	}]]></add>
+        </operation>
+    </file>
+ <file path="admin/view/template/customer/customer_list.tpl">
+        <operation>
+            <search position="replace"><![CDATA[<div class="pull-right"><a href="<?php echo $add; ?>" data-toggle="tooltip" title="<?php echo $button_add; ?>" class="btn btn-primary"><i class="fa fa-plus"></i></a>]]></search>
+            <add><![CDATA[<div class="pull-right"><a href="<?php echo $import; ?>" data-toggle="tooltip" title="<?php echo $button_import; ?>" class="btn btn-success"><i class="fa fa-arrow-down"></i></a><a href="<?php echo $export; ?>" data-toggle="tooltip" title="<?php echo "Export"; ?>" class="btn btn-success"><i class="fa fa-arrow-up"></i></a><a href="<?php echo $add; ?>" data-toggle="tooltip" title="<?php echo $button_add; ?>" class="btn btn-primary"><i class="fa fa-plus"></i></a>]]></add>
+        </operation>
+    </file>
+<!--front end customer import array values  passed model-->
+<file path="catalog/controller/account/account.php">
+        <operation>
+            <search position="before"><![CDATA[public function country() {]]></search>
+            <add><![CDATA[  public function passingcustomervalues() {
+
+        $this->load->model('account/customer');
+       // print_r($_SESSION['customerlist'] );exit;
+        foreach($_SESSION['customerlist'] as $data) {
+		//print_r($data);exit;
+            $Impot_customer_values = $this->model_account_customer->ImportaddCustomer($data);
+	
+        }
+    }]]></add>
+        </operation>
+    </file>
+<file path="catalog/model/account/customer.php">
+        <operation>
+            <search position="before"><![CDATA[public function editCustomer($data) {]]></search>
+            <add><![CDATA[public function ImportaddCustomer($data) {  //print_r($data);print_r($data['address_fiels']);exit;
+		$this->event->trigger('pre.customer.add', $data);
+
+		if (isset($data['customer_group_id']) && is_array($this->config->get('config_customer_group_display')) && in_array($data['customer_group_id'], $this->config->get('config_customer_group_display'))) {
+			$customer_group_id = $data['customer_group_id'];
+		} else {
+			$customer_group_id = $this->config->get('config_customer_group_id');
+		}
+
+		$this->load->model('account/customer_group');
+
+		$customer_group_info = $this->model_account_customer_group->getCustomerGroup($customer_group_id);
+
+		$this->db->query("INSERT INTO " . DB_PREFIX . "customer SET customer_group_id = '" . (int)$customer_group_id . "', store_id = '" . (int)$this->config->get('config_store_id') . "', firstname = '" . $this->db->escape($data['firstname']) . "', lastname = '" . $this->db->escape($data['lastname']) . "', email = '" . $this->db->escape($data['email']) . "', telephone = '" . $this->db->escape($data['telephone']) . "', fax = '" . $this->db->escape($data['fax']) . "', custom_field = '" . $this->db->escape(isset($data['custom_field']['account']) ? serialize($data['custom_field']['account']) : '') . "', salt = '" . $this->db->escape($data['salt']) . "', password = '" . $this->db->escape($data['password']) . "', newsletter = '" . (isset($data['newsletter']) ? (int)$data['newsletter'] : 0) . "', ip = '" . $this->db->escape($this->request->server['REMOTE_ADDR']) . "', status = '1', approved = '" . (int)!$customer_group_info['approval'] . "', date_added = NOW()");
+
+		$customer_id = $this->db->getLastId();
+		
+		
+        foreach ($data['address_fiels'] as $data1) {
+	
+	    $this->db->query("INSERT INTO " . DB_PREFIX . "address SET customer_id = '" . (int)$customer_id . "', firstname = '" . $this->db->escape($data1['firstname']) . "', lastname = '" . $this->db->escape($data1['lastname']) . "', company = '" . $this->db->escape($data1['company']) . "', address_1 = '" . $this->db->escape($data1['address_1']) . "', address_2 = '" . $this->db->escape($data1['address_2']) . "', city = '" . $this->db->escape($data1['city']) . "', postcode = '" . $this->db->escape($data1['postcode']) . "', country_id = '" . (int)$data1['country_id'] . "', zone_id = '" . (int)$data1['zone_id'] . "', custom_field = '" . $this->db->escape(isset($data1['custom_field']['address']) ? serialize($data1['custom_field']['address']) : '') . "'");
+
+		$address_id = $this->db->getLastId();
+		//$this->db->query("UPDATE " . DB_PREFIX . "customer SET address_id = '" . (int)$address_id . "' WHERE customer_id = '" . (int)$customer_id . "'");
+		
+        }
+        $this->db->query("UPDATE " . DB_PREFIX . "customer SET address_id = '" . (int)$address_id . "' WHERE customer_id = '" . (int)$customer_id . "'");
+		//$this->db->query("INSERT INTO " . DB_PREFIX . "address SET customer_id = '" . (int)$customer_id . "', firstname = '" . $this->db->escape($data['firstname']) . "', lastname = '" . $this->db->escape($data['lastname']) . "', company = '" . $this->db->escape($data['company']) . "', address_1 = '" . $this->db->escape($data['address_1']) . "', address_2 = '" . $this->db->escape($data['address_2']) . "', city = '" . $this->db->escape($data['city']) . "', postcode = '" . $this->db->escape($data['postcode']) . "', country_id = '" . (int)$data['country_id'] . "', zone_id = '" . (int)$data['zone_id'] . "', custom_field = '" . $this->db->escape(isset($data['custom_field']['address']) ? serialize($data['custom_field']['address']) : '') . "'");
+
+		//$address_id = $this->db->getLastId();
+
+		//$this->db->query("UPDATE " . DB_PREFIX . "customer SET address_id = '" . (int)$address_id . "' WHERE customer_id = '" . (int)$customer_id . "'");
+
+		
+		
+		$this->load->language('mail/customer');
+
+		$subject = sprintf($this->language->get('text_subject'), html_entity_decode($this->config->get('config_name'), ENT_QUOTES, 'UTF-8'));
+
+		$message = sprintf($this->language->get('text_welcome'), html_entity_decode($this->config->get('config_name'), ENT_QUOTES, 'UTF-8')) . "\n\n";
+
+		if (!$customer_group_info['approval']) {
+			$message .= $this->language->get('text_login') . "\n";
+		} else {
+			$message .= $this->language->get('text_approval') . "\n";
+		}
+
+		$message .= $this->url->link('account/login', '', 'SSL') . "\n\n";
+		$message .= $this->language->get('text_services') . "\n\n";
+		$message .= $this->language->get('text_thanks') . "\n";
+		$message .= html_entity_decode($this->config->get('config_name'), ENT_QUOTES, 'UTF-8');
+
+		$mail = new Mail();
+		$mail->protocol = $this->config->get('config_mail_protocol');
+		$mail->parameter = $this->config->get('config_mail_parameter');
+		$mail->smtp_hostname = $this->config->get('config_mail_smtp_hostname');
+		$mail->smtp_username = $this->config->get('config_mail_smtp_username');
+		$mail->smtp_password = html_entity_decode($this->config->get('config_mail_smtp_password'), ENT_QUOTES, 'UTF-8');
+		$mail->smtp_port = $this->config->get('config_mail_smtp_port');
+		$mail->smtp_timeout = $this->config->get('config_mail_smtp_timeout');
+			
+		$mail->setTo($data['email']);
+		$mail->setFrom($this->config->get('config_email'));
+		$mail->setSender(html_entity_decode($this->config->get('config_name'), ENT_QUOTES, 'UTF-8'));
+		$mail->setSubject($subject);
+		$mail->setText($message);
+		$mail->send();
+
+		// Send to main admin email if new account email is enabled
+		if ($this->config->get('config_account_mail')) {
+			$message  = $this->language->get('text_signup') . "\n\n";
+			$message .= $this->language->get('text_website') . ' ' . html_entity_decode($this->config->get('config_name'), ENT_QUOTES, 'UTF-8') . "\n";
+			$message .= $this->language->get('text_firstname') . ' ' . $data['firstname'] . "\n";
+			$message .= $this->language->get('text_lastname') . ' ' . $data['lastname'] . "\n";
+			$message .= $this->language->get('text_customer_group') . ' ' . $customer_group_info['name'] . "\n";
+			$message .= $this->language->get('text_email') . ' '  .  $data['email'] . "\n";
+			$message .= $this->language->get('text_telephone') . ' ' . $data['telephone'] . "\n";
+
+			$mail = new Mail();
+			$mail->protocol = $this->config->get('config_mail_protocol');
+			$mail->parameter = $this->config->get('config_mail_parameter');
+			$mail->smtp_hostname = $this->config->get('config_mail_smtp_hostname');
+			$mail->smtp_username = $this->config->get('config_mail_smtp_username');
+			$mail->smtp_password = html_entity_decode($this->config->get('config_mail_smtp_password'), ENT_QUOTES, 'UTF-8');
+			$mail->smtp_port = $this->config->get('config_mail_smtp_port');
+			$mail->smtp_timeout = $this->config->get('config_mail_smtp_timeout');
+			
+			$mail->setTo($this->config->get('config_email'));
+			$mail->setFrom($this->config->get('config_email'));
+			$mail->setSender(html_entity_decode($this->config->get('config_name'), ENT_QUOTES, 'UTF-8'));
+			$mail->setSubject(html_entity_decode($this->language->get('text_new_customer'), ENT_QUOTES, 'UTF-8'));
+			$mail->setText($message);
+			$mail->send();
+
+			// Send to additional alert emails if new account email is enabled
+			$emails = explode(',', $this->config->get('config_mail_alert'));
+
+			foreach ($emails as $email) {
+				if (utf8_strlen($email) > 0 && preg_match('/^[^\@]+@.*.[a-z]{2,15}$/i', $email)) {
+					$mail->setTo($email);
+					$mail->send();
+				}
+			}
+		}
+
+		$this->event->trigger('post.customer.add', $customer_id);
+
+		return $customer_id;
+	}
+]]></add>
+        </operation>
+    </file>
+
+<!--Category Import-->
+<file path="admin/controller/catalog/category.php">
+        <operation>
+            <search position="before"><![CDATA[$data['add'] = $this->url->link('catalog/category/add', 'token=' . $this->session->data['token'] . $url, true);]]></search>
+            <add><![CDATA[$data['button_import'] = $this->language->get('button_import');
+        $data['import'] = $this->url->link('catalog/category/import', 'token=' . $this->session->data['token'],true);
+$data['button_export'] = $this->language->get('button_export');
+	$data['export'] = $this->url->link('catalog/category/category_export', 'token=' . $this->session->data['token'],true);
+]]></add>
+        </operation>
+
+        <operation>
+            <search position="before"><![CDATA[protected function getForm() {]]></search>
+            <add><![CDATA[ public function import() {
+
+        $excel_field_error = 0;
+		
+        $_SESSION['categorylist']=array();
+
+        $this->load->language('sale/customer');
+        //$this->load->model('sale/order');
+
+        $data['heading_title'] = "Import Category Data";
+
+        $data['entry_import'] = $this->language->get('Upload CSV File');
+
+        $data['entry_insertonly'] = $this->language->get('Insert Only');
+
+        $data['action'] = $this->url->link('catalog/category/import', 'token=' . $this->session->data['token'], 'SSL');
+
+        $data['importdataurl'] = $this->url->link('catalog/category/importcategory', 'token=' . $this->session->data['token'], 'SSL');
+        $data['sampleexport'] = $this->url->link('catalog/category/categorysampleexport', 'token=' . $this->session->data['token'], 'SSL');
+        $data['sample_export'] = $this->language->get('Sample Csv File');
+
+        $data['breadcrumbs'] = array();
+
+        $data['breadcrumbs'][] = array(
+            'text'      => $this->language->get('text_home'),
+            'href'      => $this->url->link('common/home', 'token=' . $this->session->data['token'], 'SSL'),
+            'separator' => false
+        );
+
+        $data['breadcrumbs'][] = array(
+            'text'      => $this->language->get('heading_title'),
+            'href'      => $this->url->link('catalog/category', 'token=' . $this->session->data['token'], 'SSL'),
+            'separator' => ' :: '
+        );
+
+
+        if(isset($_POST['submit']))
+        {
+
+	    $version_check=$_POST['opcversion'];	
+            $insertonly=0;
+
+            if(isset($_POST['insertonly']) && $_POST['insertonly']==1)
+                $insertonly=1;
+
+            if($this->validateImport())
+            {  // import form validate start
+
+                if ((isset($this->request->files['file'])) && (is_uploaded_file($this->request->files['file']['tmp_name'])))
+                { //file upload start
+			if($version_check=="opc2200" || $version_check=="opc2302")
+						{ //opc version check start
+
+                    @set_time_limit(3600);
+                    if (substr(@ini_get("memory_limit"), 0, -1) < "512") {
+                        @ini_set("memory_limit", "512M");
+                    }
+                    ini_set("memory_limit", "512M");
+                    ini_set("max_execution_time", 180);
+                    ini_set('display_errors', 1);
+                    ini_set('log_errors', 1);
+                    error_reporting(E_ALL);
+                    //set_time_limit( 60 );
+
+                    $filename = $this->request->files['file']['tmp_name'];
+
+                    //chdir('../system/library/PHPExcel'); // change directory to PHPExcel library
+                    //require_once( 'Classes/PHPExcel.php' );
+                    //chdir('../../../admin');
+
+                    require_once('../system/library/PHPExcel/Classes/PHPExcel.php' );
+
+                    $inputFileType = PHPExcel_IOFactory::identify($filename);
+                    $objReader = PHPExcel_IOFactory::createReader($inputFileType);
+                    //$objReader->setReadDataOnly(true);
+                    $reader = $objReader->load($filename);
+                    $reader = &$reader;
+                    //			$this->clearCache();
+
+                    $xldata = $reader->getSheet(0);
+
+                    $isFirstRow = TRUE;
+
+                    $i = 0;                
+                   
+
+                    $k = $xldata->getHighestRow();
+					
+                    $category_array = array();
+					$temp=0;
+					
+                    $columns = PHPExcel_Cell::columnIndexFromString($xldata->getHighestColumn());
+
+                    if($columns == 11)
+                    {
+                        for ($i = 0; $i < $k; $i++) {  // Excel row loop start
+                            //Skip the header row
+                            if ($isFirstRow) {
+                                $isFirstRow = FALSE;
+                                continue;
+                            }
+
+                            $category_name = $this->getCell($xldata, $i, 1);
+                            $description = $this->getCell($xldata, $i, 2);                            
+                            $meta_description = $this->getCell($xldata, $i, 3);                           
+                            $meta_keyword = $this->getCell($xldata, $i, 4); 
+							                          
+                            $parent_ID = $this->getCell($xldata, $i, 5);
+                            $image = $this->getCell($xldata, $i, 6);	
+							
+							$array1=explode("/",$image);
+							$array2 = array_shift($array1);							
+							array_unshift($array1,"catalog");							
+							$array_image=implode("/",$array1);
+							///print_r($array_image);
+													
+                            $top = $this->getCell($xldata, $i, 7);						
+                            $store_id = $this->getCell($xldata, $i, 8);	
+							$store_id_array=array();
+							$store_id_array[]=$store_id;
+							
+					
+							$column = $this->getCell($xldata, $i, 9);
+									
+							$sort_order = $this->getCell($xldata, $i, 10);
+							$status = $this->getCell($xldata, $i, 11);
+               		
+		                    $custom_language_id=is_numeric($this->config->get('config_language_id'))?$this->config->get('config_language_id'):1;
+						
+                                $category_description[$custom_language_id]['name'] = $category_name;
+                                $category_description[$custom_language_id]['description'] = $description;
+                                $category_description[$custom_language_id]['meta_title'] = '';
+                                $category_description[$custom_language_id]['meta_description'] = $meta_description;
+                                $category_description[$custom_language_id]['meta_keyword'] = $meta_keyword;
+								
+								$category_array[$temp]['category_description'] = $category_description;
+								
+								$category_array[$temp]['language_id'] = 1;					
+                                $category_array[$temp]['parent_id'] = $parent_ID;
+								$category_array[$temp]['image'] = $array_image;
+								$category_array[$temp]['top'] = $top;
+								$category_array[$temp]['category_store'] = $store_id_array;							
+								
+								$category_array[$temp]['column'] = $column;
+								$category_array[$temp]['sort_order'] = $sort_order;
+								$category_array[$temp]['status'] = ($status == "Enable" ? 1 : 0);
+								
+							    $temp++;
+
+                            } // Excel row loop end
+    
+
+                        $category_list_data=$category_array;
+						//print_r($category_list_data);exit;
+
+                    }
+                    else
+                    {
+                        $excel_field_error = 1;
+                    }
+
+			 }//opc version check end
+
+                } //file upload end
+
+                if(!$excel_field_error)
+                {
+
+                    $data['sampletabledata']= $category_list_data;
+
+                    $_SESSION['categorylist'] = $category_list_data;
+                }
+
+            } // import form validate end
+
+        }
+
+        if (isset($this->error['warning'])) {
+            $data['error_warning'] = $this->error['warning'];
+        } else {
+            $data['error_warning'] = '';
+        }
+
+        if (isset($this->error['errorfile'])) {
+            $data['error_file'] = $this->error['errorfile'];
+        } else {
+            $data['error_file'] = '';
+        }
+	if (isset($this->error['errorfile_opcversion'])) {
+            $data['error_file_opcversion'] = $this->error['errorfile_opcversion'];
+        } else {
+            $data['error_file_opcversion'] = '';
+        }
+
+        if($excel_field_error)
+        {
+            $data['error_fields'] = 'Upload like our Sample Excel File';
+        }
+        else
+        {
+            $data['error_fields'] = '';
+        }
+
+        /* $this->load->model('design/layout');
+       $data['layouts']=$this->model_design_layout->getLayouts();*/
+
+        $data['header']=$this->load->controller('common/header');
+        $data['footer']=$this->load->controller('common/footer');
+        $data['column_left']=$this->load->controller('common/column_left');
+
+        if (isset($this->request->server['HTTPS']) && (($this->request->server['HTTPS'] == 'on') || ($this->request->server['HTTPS'] == '1'))) {
+            $data['base'] = $this->config->get('config_ssl');
+        } else {
+            $data['base'] = $this->config->get('config_url');
+        }
+
+        $this->response->setOutput($this->load->view('catalog/category_import.tpl',$data));//print_r($_SESSION['categorylist']);exit;
+
+    }
+
+
+
+    public function importcategory()
+	{
+	$this->load->model('catalog/category');
+	if(isset($_SESSION['categorylist']) && is_array($_SESSION['categorylist']))
+	{
+		//print_r($_SESSION['categorylist']);
+		
+						foreach($_SESSION['categorylist'] as $categorydata)
+						{                            
+                                $productexist = $this->model_catalog_category->addCategory($categorydata);                                
+                           
+                        } 
+					
+			unset($_SESSION['categorylist']);
+			$url = '';			
+			$this->response->redirect($this->url->link('catalog/category', 'token=' . $this->session->data['token'] ,true));	
+	
+	}
+	
+	//exit;
+	}
+
+    function getCell(&$worksheet, $row, $col, $default_val = '') {
+        $col -= 1; // we use 1-based, PHPExcel uses 0-based column index
+        $row += 1; // we use 0-based, PHPExcel used 1-based row index
+        return ($worksheet->cellExistsByColumnAndRow($col, $row)) ? $worksheet->getCellByColumnAndRow($col, $row)->getValue() : $default_val;
+    }
+
+    public function categorysampleexport()
+    {
+        /* Include PHPExcel class */
+        //chdir('../system/library/PHPExcel');
+        //require_once( 'Classes/PHPExcel.php' );
+        //chdir('../../../admin');
+
+        require_once('../system/library/PHPExcel/Classes/PHPExcel.php' );
+
+        // Instantiate a new PHPExcel object
+        $objPHPExcel = new PHPExcel();
+        // Set the active Excel worksheet to sheet 0
+        $objPHPExcel->setActiveSheetIndex(0);
+        // Initialise the Excel row number
+        $rowCount = 1;
+		
+       //customer field
+        $objPHPExcel->getActiveSheet()->SetCellValue('A'.$rowCount, 'Category Name');
+        $objPHPExcel->getActiveSheet()->SetCellValue('B'.$rowCount, 'Description');
+        $objPHPExcel->getActiveSheet()->SetCellValue('C'.$rowCount, 'Meta_description');
+        $objPHPExcel->getActiveSheet()->SetCellValue('D'.$rowCount, 'Meta_keyword');
+        $objPHPExcel->getActiveSheet()->SetCellValue('E'.$rowCount, 'Parent ID');
+        $objPHPExcel->getActiveSheet()->SetCellValue('F'.$rowCount, 'Image');
+        $objPHPExcel->getActiveSheet()->SetCellValue('G'.$rowCount, 'Top');
+		$objPHPExcel->getActiveSheet()->SetCellValue('H'.$rowCount, 'Store_id');
+        $objPHPExcel->getActiveSheet()->SetCellValue('I'.$rowCount, 'Column');
+        $objPHPExcel->getActiveSheet()->SetCellValue('J'.$rowCount, 'Sort Order');
+        $objPHPExcel->getActiveSheet()->SetCellValue('K'.$rowCount, 'Status');
+
+       
+
+        header("Content-Type: text/csv; charset=utf-8");
+        header('Content-Disposition: attachment;filename="category_list_'.date("Y m d G i s").'.csv"');
+        //header('Content-Disposition: attachment;filename="category_list_'.date("Y m d G i s").'.xlsx"');
+        header('Cache-Control: max-age=0');
+
+        // Instantiate a Writer to create an OfficeOpenXML Excel .xlsx file
+        //$objWriter = new PHPExcel_Writer_Excel2007($objPHPExcel);
+        $objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel,'CSV');
+        // Write the Excel file to filename some_excel_file.xlsx in the current directory
+        //$objWriter->save('some_excel_file.xlsx');
+
+        /* Download CsV file in downloads */
+        $objWriter->save('php://output');
+
+//        chdir('../../..');
+    }
+    protected function validateImport() {
+        /*if (!$this->user->hasPermission('modify', 'sale/customer')) {
+            $this->error['warning'] = $this->language->get('error_permission');
+        }*/
+	if(!$_POST['opcversion']){
+	     $this->error['errorfile_opcversion'] = $this->language->get('Please Select upload version');
+        }
+
+        if (!$this->request->files['file']['tmp_name']) {
+            $this->error['errorfile'] = $this->language->get('Please Upload a Excel/CSV file');
+        }
+        elseif($_FILES["file"]["name"])
+        {
+            $allowedExts = array("csv", "xlsx", "xls");
+            $temp = explode(".", $_FILES["file"]["name"]);
+            $extension = end($temp);
+
+            if(!in_array($extension, $allowedExts))
+                $this->error['errorfile'] = $this->language->get('Please Upload a Excel/CSV file');
+        }
+
+        if (!$this->error) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+//export category
+public function category_export(){      
+      
+		$temp_count = 1;		 
+		$this->load->model('catalog/category');
+		$results=array();
+        $results_description = $this->model_catalog_category->ExportgetCategoryDescriptions(); //print_r($results_description);exit;        
+        
+        foreach ($results_description as $result) { //print_r($result['name']);exit;
+        	//customer table
+        	$category_list[$temp_count]['name']        					= $result['name'];
+            $category_list[$temp_count]['description']        			= $this->cleanString($result['description']);
+			$category_list[$temp_count]['meta_description']        		= $result['meta_description'];
+			$category_list[$temp_count]['meta_keyword']        			= $result['meta_keyword'];
+			
+			$category_list[$temp_count]['parent_id']        			= $result['parent_id'];
+			$category_list[$temp_count]['image']        				= $result['image'];
+			$category_list[$temp_count]['top']        					= $result['top'];
+			$category_list[$temp_count]['store_id']        				= $result['store_id'];
+			$category_list[$temp_count]['column']        				= $result['column'];
+			$category_list[$temp_count]['sort_order']        			= $result['sort_order'];
+			$category_list[$temp_count]['status']        				= ($result['status'] == 1 ? 'Enable' : 'Disable');			
+			
+            $temp_count++;
+        }  
+	   
+        
+        $category = array();
+        
+        $category_column=array();        
+		        
+         $category_column = array('Category Name','Description','Meta_description','Meta_keyword','Parent ID','Image','Top','Store_id','Column','Sort Order','Status');
+            
+        $category[0] = $category_column;          
+  
+        foreach($category_list as $category_row)
+        {
+            $category[]=$category_row;
+        }
+     
+                        header( 'Content-Type: text/csv' );
+				        header( 'Content-Disposition: attachment;filename="Category_List_'.date("Y m d G i s").'.csv"');
+						$out = fopen('php://output', 'w');
+				
+						foreach ($category as $fields) {
+						    fputcsv($out, $fields);
+						}
+						
+						fclose($out);
+	}
+public function cleanString($text) {
+						// 1) convert á ô => a o
+						$text = preg_replace("/[áàâãªä]/u","a",$text);
+						$text = preg_replace("/[ÁÀÂÃÄ]/u","A",$text);
+						$text = preg_replace("/[ÍÌÎÏ]/u","I",$text);
+						$text = preg_replace("/[íìîï]/u","i",$text);
+						$text = preg_replace("/[éèêë]/u","e",$text);
+						$text = preg_replace("/[ÉÈÊË]/u","E",$text);
+						$text = preg_replace("/[óòôõºö]/u","o",$text);
+						$text = preg_replace("/[ÓÒÔÕÖ]/u","O",$text);
+						$text = preg_replace("/[úùûü]/u","u",$text);
+						$text = preg_replace("/[ÚÙÛÜ]/u","U",$text);
+						$text = preg_replace("/[’‘‹›‚]/u","'",$text);
+						$text = preg_replace("/[“”«»„]/u",'"',$text);
+						$text = str_replace("–","-",$text);
+						$text = str_replace(" "," ",$text);
+						$text = str_replace("ç","c",$text);
+						$text = str_replace("Ç","C",$text);
+						$text = str_replace("ñ","n",$text);
+						$text = str_replace("Ñ","N",$text);
+					 
+						//2) Translation CP1252. &ndash; => -
+						$trans = get_html_translation_table(HTML_ENTITIES); 
+						$trans[chr(130)] = '&sbquo;';    // Single Low-9 Quotation Mark 
+						$trans[chr(131)] = '&fnof;';    // Latin Small Letter F With Hook 
+						$trans[chr(132)] = '&bdquo;';    // Double Low-9 Quotation Mark 
+						$trans[chr(133)] = '&hellip;';    // Horizontal Ellipsis 
+						$trans[chr(134)] = '&dagger;';    // Dagger 
+						$trans[chr(135)] = '&Dagger;';    // Double Dagger 
+						$trans[chr(136)] = '&circ;';    // Modifier Letter Circumflex Accent 
+						$trans[chr(137)] = '&permil;';    // Per Mille Sign 
+						$trans[chr(138)] = '&Scaron;';    // Latin Capital Letter S With Caron 
+						$trans[chr(139)] = '&lsaquo;';    // Single Left-Pointing Angle Quotation Mark 
+						$trans[chr(140)] = '&OElig;';    // Latin Capital Ligature OE 
+						$trans[chr(145)] = '&lsquo;';    // Left Single Quotation Mark 
+						$trans[chr(146)] = '&rsquo;';    // Right Single Quotation Mark 
+						$trans[chr(147)] = '&ldquo;';    // Left Double Quotation Mark 
+						$trans[chr(148)] = '&rdquo;';    // Right Double Quotation Mark 
+						$trans[chr(149)] = '&bull;';    // Bullet 
+						$trans[chr(150)] = '&ndash;';    // En Dash 
+						$trans[chr(151)] = '&mdash;';    // Em Dash 
+						$trans[chr(152)] = '&tilde;';    // Small Tilde 
+						$trans[chr(153)] = '&trade;';    // Trade Mark Sign 
+						$trans[chr(154)] = '&scaron;';    // Latin Small Letter S With Caron 
+						$trans[chr(155)] = '&rsaquo;';    // Single Right-Pointing Angle Quotation Mark 
+						$trans[chr(156)] = '&oelig;';    // Latin Small Ligature OE 
+						$trans[chr(159)] = '&Yuml;';    // Latin Capital Letter Y With Diaeresis 
+						$trans['euro'] = '&euro;';    // euro currency symbol 
+						ksort($trans); 
+						 
+						foreach ($trans as $k => $v) {
+							$text = str_replace($v, $k, $text);
+						}
+					 
+						// 3) remove <p>, <br/> ...
+						$text = strip_tags($text); 
+						 
+						// 4) &amp; => & &quot; => '
+						$text = html_entity_decode($text);
+						 
+						// 5) remove Windows-1252 symbols like "TradeMark", "Euro"...
+						$text = preg_replace('/[^(\x20-\x7F)]*/','', $text); 
+						 
+						$targets=array('\r\n','\n','\r','\t');
+						$results=array(" "," "," ","");
+						$text = str_replace($targets,$results,$text);	
+						return ($text);
+					}
+]]></add>
+        </operation>
+    </file>
+
+<file path="admin/model/catalog/category.php">
+        <operation>
+            <search position="before"><![CDATA[public function editCategory($category_id, $data) {]]></search>
+            <add><![CDATA[public function ExportgetCategoryDescriptions() {
+		$query = $this->db->query("SELECT * FROM " . DB_PREFIX . "category c LEFT JOIN " . DB_PREFIX . "category_description cd ON (c.category_id = cd.category_id) LEFT JOIN " . DB_PREFIX . "category_to_store cto ON (c.category_id=cto.category_id)");
+
+		return $query->rows;
+		}]]></add>
+        </operation>
+    </file>
+<file path="admin/view/template/catalog/category_list.tpl">
+        <operation>
+            <search position="replace"><![CDATA[<div class="pull-right"><a href="<?php echo $add; ?>" data-toggle="tooltip" title="<?php echo $button_add; ?>" class="btn btn-primary"><i class="fa fa-plus"></i></a>]]></search>
+            <add><![CDATA[<div class="pull-right"><a href="<?php echo $import; ?>" data-toggle="tooltip" title="<?php echo $button_import; ?>" class="btn btn-success"><i class="fa fa-arrow-down"></i></a><a href="<?php echo $export; ?>" data-toggle="tooltip" title="<?php echo "Export"; ?>" class="btn btn-success"><i class="fa fa-arrow-up"></i></a><a href="<?php echo $add; ?>" data-toggle="tooltip" title="<?php echo $button_add; ?>" class="btn btn-primary"><i class="fa fa-plus"></i></a>]]></add>
+        </operation>
+</file>
+<file path="admin/controller/catalog/product.php">
+        <operation>
+            <search position="before"><![CDATA[$data['delete'] = $this->url->link('catalog/product/delete', 'token=' . $this->session->data['token'] . $url, true);]]></search>
+            <add><![CDATA[$data['button_import'] = $this->language->get('button_import');
+        $data['import'] = $this->url->link('catalog/product/import', 'token=' . $this->session->data['token'] . $url, 'SSL');
+$data['button_export'] = $this->language->get('button_export');
+        $data['export'] = $this->url->link('catalog/product/products_export', 'token=' . $this->session->data['token']. $url, 'SSL');
+]]></add>
+        </operation>
+
+        <operation>
+            <search position="before"><![CDATA[public function autocomplete() {]]></search>
+            <add><![CDATA[ public function import() {
+		
+		$excel_field_error = 0;
+		$_SESSION['productlist']=array();
+	
+		$this->load->language('catalog/product');
+		
+		$this->load->model('catalog/product');
+		$this->load->model('catalog/category');
+		$this->load->model('catalog/manufacturer');
+		$this->load->model('localisation/stock_status');
+		$this->load->model('localisation/length_class');
+		$this->load->model('localisation/weight_class');
+		$this->load->model('localisation/tax_class');
+		$this->load->model('tool/image');
+		
+		$data['heading_title'] = "Import Product Data";
+		
+		
+
+		$data['entry_import'] = $this->language->get('Upload CSV File');
+		
+		$data['entry_insertonly'] = $this->language->get('Insert Only');	
+				
+		$data['action'] = $this->url->link('catalog/product/import', 'token=' . $this->session->data['token'], 'SSL');
+		
+		$data['importdataurl'] = $this->url->link('catalog/product/importproducts', 'token=' . $this->session->data['token'], 'SSL');
+		
+		
+		$data['sampleexport'] = $this->url->link('catalog/product/productsampleexport', 'token=' . $this->session->data['token'], 'SSL');
+		$data['sample_export'] = $this->language->get('Sample Csv File');
+		
+  		$data['breadcrumbs'] = array();
+
+   		$data['breadcrumbs'][] = array(
+       		'text'      => $this->language->get('text_home'),
+			'href'      => $this->url->link('common/home', 'token=' . $this->session->data['token'], 'SSL'),  		
+      		'separator' => false
+   		);
+
+   		$data['breadcrumbs'][] = array(
+       		'text'      => $this->language->get('heading_title'),
+			'href'      => $this->url->link('catalog/product', 'token=' . $this->session->data['token'], 'SSL'),
+      		'separator' => ' :: '
+   		);
+		
+		
+		if(isset($_POST['submit']))
+		{		
+				$insertonly=0;
+				$version_check=$_POST['opcversion'];
+				
+				if(isset($_POST['insertonly']) && $_POST['insertonly']==1)
+				$insertonly=1;
+				
+				
+				if($this->validateImport())
+				{  // import form validate start
+				
+				 if ((isset($this->request->files['file'])) && (is_uploaded_file($this->request->files['file']['tmp_name']))) 
+				 { //file upload start
+
+					if($version_check=="opc2200" || $version_check=="opc2302")
+						{ //opc version check start
+				 
+							@set_time_limit(3600);
+						if (substr(@ini_get("memory_limit"), 0, -1) < "512") {
+									@ini_set("memory_limit", "512M");
+								}
+						ini_set("memory_limit", "512M");
+						ini_set("max_execution_time", 180);
+						ini_set('display_errors', 1);
+						ini_set('log_errors', 1);
+						error_reporting(E_ALL);
+						//set_time_limit( 60 );
+						
+						$filename = $this->request->files['file']['tmp_name'];
+
+						//chdir('../system/library/PHPExcel'); // change directory to PHPExcel library
+						//require_once( 'Classes/PHPExcel.php' );
+						//chdir('../../../admin');
+
+						require_once('../system/library/PHPExcel/Classes/PHPExcel.php' );
+
+						$inputFileType = PHPExcel_IOFactory::identify($filename);
+						$objReader = PHPExcel_IOFactory::createReader($inputFileType);
+						//$objReader->setReadDataOnly(true);
+						$reader = $objReader->load($filename);
+						$reader = &$reader;						
+					//			$this->clearCache();
+					
+						$xldata = $reader->getSheet(0);
+						
+						$isFirstRow = TRUE;
+						
+						$i = 0;
+						
+						$k = $xldata->getHighestRow();
+						
+						$columns = PHPExcel_Cell::columnIndexFromString($xldata->getHighestColumn());
+
+						$product_list_data = array();
+						$product_array = array();
+						$temp=0;//declared
+					    $array_additional_image=array();
+						
+						if($columns == 47)
+						{
+						
+						$customer_list_array=array();
+						for ($i = 0; $i < $k; $i++) {  // Excel row loop start
+							//Skip the header row
+							if ($isFirstRow) {
+								$isFirstRow = FALSE;
+								continue;
+							}			
+							
+							$product_categories=array();				
+							
+							// Collect Detail
+							$productname = $this->getCell($xldata, $i, 1);
+					        $description = $this->getCell($xldata, $i, 2);
+							$meta_description = $this->getCell($xldata, $i, 3);
+							$meta_keyword = $this->getCell($xldata, $i, 4);
+							$tag = $this->getCell($xldata, $i, 5);
+							
+							$model = $this->getCell($xldata, $i, 6);
+							
+							$store_id = $this->getCell($xldata, $i, 7);
+							$store_id_array=array();
+							$store_id_array[]=$store_id;
+							
+							$sku =$this->getCell($xldata, $i, 8);
+							$upc = $this->getCell($xldata, $i, 9);
+							$ean = $this->getCell($xldata, $i, 10);							
+							$jan = $this->getCell($xldata, $i, 11);
+							$isbn = $this->getCell($xldata, $i, 12);
+							$mpn = $this->getCell($xldata, $i, 13);
+							$location = $this->getCell($xldata, $i, 14);							
+							$quantity = $this->getCell($xldata, $i, 15);
+							$stock_status_name = $this->getCell($xldata, $i, 16);
+							$stock_status_id=$this->model_catalog_product->getStockStatusId($stock_status_name);
+				            $product_image_path = $this->getCell($xldata, $i, 17);
+							//print_r(array_map('trim',explode("/",$product_image_path)));exit
+							$array1=explode("/",$product_image_path);
+							$array2 = array_shift($array1);							
+							array_unshift($array1,"catalog");							
+							$array_image=implode("/",$array1);
+							//print_r($array3);exit;
+							
+							$require_shipping = $this->getCell($xldata, $i, 18);							
+							$price = $this->getCell($xldata, $i, 19);
+							$tax_class_id = $this->getCell($xldata, $i, 20);
+							$date_available = $this->getCell($xldata, $i, 21);
+							$weight = $this->getCell($xldata, $i, 22);							
+							$weight_class_id = $this->getCell($xldata, $i, 23);
+							$length = $this->getCell($xldata, $i, 24);
+							$width = $this->getCell($xldata, $i, 25);
+							$height = $this->getCell($xldata, $i, 26);
+							$length_class_id = $this->getCell($xldata, $i, 27);
+							$subtract = $this->getCell($xldata, $i, 28);
+							$minimum = $this->getCell($xldata, $i, 29);
+							$sort_order = $this->getCell($xldata, $i, 30);
+							$viewed= $this->getCell($xldata, $i, 31);
+							$points = $this->getCell($xldata, $i, 32);
+							$status = $this->getCell($xldata, $i, 33);
+							
+							$manufacturer_name = $this->getCell($xldata, $i, 34);
+							$manufacturer_id=$this->model_catalog_product->getImportManufacturerId($manufacturer_name);
+							
+							$get_product_category_id=array();
+							$product_category = $this->getCell($xldata, $i, 35);
+							$explode_product_category=explode(",",$product_category);
+							foreach ($explode_product_category as $explode_product_category1) {								
+								$get_product_category_id[]=$this->model_catalog_product->getImportCategoryId($explode_product_category1);								
+							}							
+							
+						    $additional_image_path = $this->getCell($xldata, $i, 36);							
+							$array11=explode(",",$additional_image_path);
+							//print_r($array11);exit;
+							$short=0;
+				            foreach ($array11 as $array12) {
+								$array13=explode("/",$array12);
+								//print_r($array13);exit;
+							    $array14 = array_shift($array13);
+								//print_r($array13)	;exit;						
+							    array_unshift($array13,"catalog");							
+							    $array_additional_image[$short]['image']=implode("/",$array13);
+								$array_additional_image[$short]['sort_order']=$short;
+								$short++;
+								
+							}						
+							
+							$option_type = $this->getCell($xldata, $i, 37);			
+							$get_option_id=$this->model_catalog_product->getOptionId($option_type);											
+						    $get_option_type=$this->model_catalog_product->getOptionTypeId($get_option_id);							
+							$required = $this->getCell($xldata, $i, 38);							
+							$option_value = $this->getCell($xldata, $i, 39);
+							$get_option_value_id=$this->model_catalog_product->getOptionValueId($option_value);							
+							$option_value_quantity = $this->getCell($xldata, $i, 40);
+							$option_value_subtract = $this->getCell($xldata, $i, 41);														
+							$option_value_price= $this->getCell($xldata, $i, 42);
+							$option_value_price_prefix = $this->getCell($xldata, $i, 43);
+							$option_value_points = $this->getCell($xldata, $i, 44);
+							$option_value_points_prefix= $this->getCell($xldata, $i, 45);
+							$option_value_weight = $this->getCell($xldata, $i, 46);
+							$option_value_weight_prefix = $this->getCell($xldata, $i, 47);
+		
+							if(!empty($productname)){
+							$temp++;
+							$temp_option=0;
+							$temp_option_value=0;
+						    $product_description=array();
+							$custom_language_id=is_numeric($this->config->get('config_language_id'))?$this->config->get('config_language_id'):1;
+							
+					        $product_description[$custom_language_id]['name'] = $productname;
+						    $product_description[$custom_language_id]['description'] = $description;
+							$product_description[$custom_language_id]['meta_title'] = '12345';
+						    $product_description[$custom_language_id]['meta_description'] = $meta_description;
+							$product_description[$custom_language_id]['meta_keyword'] = $meta_keyword;
+							$product_description[$custom_language_id]['tag'] = $meta_description;							
+							
+							$product_array[$temp]['product_description'] = $product_description;							
+							
+							$product_array[$temp]['model'] = $model;
+							$product_array[$temp]['product_store'] = $store_id_array;
+							$product_array[$temp]['sku'] = $sku;
+						    $product_array[$temp]['upc'] = $upc;
+						    $product_array[$temp]['ean'] = $ean;
+							$product_array[$temp]['jan'] = $jan;
+							$product_array[$temp]['isbn'] = $isbn;
+							$product_array[$temp]['mpn'] = $mpn;
+							$product_array[$temp]['location'] = $location;
+							$product_array[$temp]['quantity'] = $quantity;
+						    $product_array[$temp]['stock_status_id'] = $stock_status_id;
+						    $product_array[$temp]['image'] = $array_image;
+							$product_array[$temp]['shipping'] = ($require_shipping == "Yes")?1:0;
+							$product_array[$temp]['price'] = $price;
+							$product_array[$temp]['tax_class_id'] = $tax_class_id;
+							$product_array[$temp]['date_available'] = $date_available;
+							$product_array[$temp]['weight'] = $weight;
+						    $product_array[$temp]['weight_class_id'] = $weight_class_id;
+						    $product_array[$temp]['length'] = $length;
+							$product_array[$temp]['width'] = $width;
+							$product_array[$temp]['height'] = $height;
+							$product_array[$temp]['length_class_id'] = $length_class_id;							
+					        $product_array[$temp]['subtract'] = $subtract;
+						    $product_array[$temp]['minimum'] = $minimum;
+						    $product_array[$temp]['sort_order'] = $sort_order;
+							$product_array[$temp]['viewed'] = $viewed;
+							$product_array[$temp]['points'] = $points;
+							$product_array[$temp]['status'] = ($status == "Enabled")?1:0;
+							$product_array[$temp]['product_image'] = $array_additional_image;			
+							
+							// loop categories
+							$product_array[$temp]['manufacturer'] = $manufacturer_name;							
+							$product_array[$temp]['manufacturer_id'] = $manufacturer_id;							
+							$product_array[$temp]['product_category'] = $get_product_category_id;
+							
+							$product_array[$temp]['product_option'][$temp_option]['product_option_id'] = '';
+							$product_array[$temp]['product_option'][$temp_option]['name'] = $option_type;
+							$product_array[$temp]['product_option'][$temp_option]['option_id'] = $get_option_id;
+							$product_array[$temp]['product_option'][$temp_option]['type'] = $get_option_type;														
+							$product_array[$temp]['product_option'][$temp_option]['required'] = ($required == "Yes")?1:0;
+							$product_array[$temp]['product_option'][$temp_option]['value'] = $option_value;	
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['option_value_id']=$get_option_value_id; 
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['product_option_value_id']='';
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['quantity']=$option_value_quantity;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['subtract']=$option_value_subtract;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['price_prefix']=$option_value_price_prefix;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['price']=$option_value_price;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['points_prefix']=$option_value_points_prefix;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['points']=$option_value_points;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['weight_prefix']=$option_value_weight_prefix;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['weight']=$option_value_weight;
+							}
+							else
+							{
+								
+								if(!empty($option_type)){
+							$temp_option++;
+							$temp_option_value++;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_id'] = '';
+							$product_array[$temp]['product_option'][$temp_option]['name'] = $option_type;
+							$product_array[$temp]['product_option'][$temp_option]['option_id'] = $get_option_id;
+							$product_array[$temp]['product_option'][$temp_option]['type'] = $get_option_type;							
+							$product_array[$temp]['product_option'][$temp_option]['required'] = ($required == "Yes")?1:0;
+							$product_array[$temp]['product_option'][$temp_option]['value'] = $option_value;	
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['option_value_id']=$get_option_value_id; 
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['product_option_value_id']='';
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['quantity']=$option_value_quantity;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['subtract']=($option_value_subtract == "Yes")?1:0;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['price_prefix']=$option_value_price_prefix;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['price']=$option_value_price;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['points_prefix']=$option_value_points_prefix;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['points']=$option_value_points;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['weight_prefix']=$option_value_weight_prefix;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['weight']=$option_value_weight;
+								}
+								else{
+							$temp_option_value++;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['option_value_id']=$get_option_value_id; 
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['product_option_value_id']='';
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['quantity']=$option_value_quantity;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['subtract']=($option_value_subtract == "Yes")?1:0;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['price_prefix']=$option_value_price_prefix;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['price']=$option_value_price;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['points_prefix']=$option_value_points_prefix;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['points']=$option_value_points;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['weight_prefix']=$option_value_weight_prefix;
+							$product_array[$temp]['product_option'][$temp_option]['product_option_value'][$temp_option_value]['weight']=$option_value_weight;
+								}
+							}                
+							
+						
+						} // Excel row loop end
+						
+							$product_list_data=$product_array;
+						}
+						else
+						{
+			             $excel_field_error = 1;
+						}
+
+						 }//opc version check end
+						
+					    } //file upload end		
+						
+						
+						if(!$excel_field_error)
+						{
+
+
+							$data['sampletabledata']=$product_list_data;
+							
+							$_SESSION['productlist'] = $product_list_data;
+						}
+
+				} // import form validate end		
+		
+		}
+		
+        if (isset($this->error['warning'])) {
+			$data['error_warning'] = $this->error['warning'];
+		} else {
+			$data['error_warning'] = '';
+		}
+		
+		if (isset($this->error['errorfile'])) {
+			$data['error_file'] = $this->error['errorfile'];
+		} else {
+			$data['error_file'] = '';
+		}
+ if (isset($this->error['errorfile_opcversion'])) {
+            $data['error_file_opcversion'] = $this->error['errorfile_opcversion'];
+        } else {
+            $data['error_file_opcversion'] = '';
+        }
+		
+		if($excel_field_error)
+			{
+			$data['error_fields'] = 'Upload like our Sample Excel File';			
+			}
+		else
+			{
+			$data['error_fields'] = '';			
+			}
+		
+		
+		
+		$this->load->model('design/layout');
+		$data['layouts']=$this->model_design_layout->getLayouts();
+		
+		$data['header']=$this->load->controller('common/header');
+		$data['footer']=$this->load->controller('common/footer');
+		$data['column_left']=$this->load->controller('common/column_left');
+
+		
+		$this->response->setOutput($this->load->view('catalog/product_import.tpl',$data));
+		
+	}
+	
+
+	public function importproducts()
+	{
+	$this->load->model('catalog/product');
+	if(isset($_SESSION['productlist']) && is_array($_SESSION['productlist']))
+	{
+						foreach($_SESSION['productlist'] as $productdata)
+						{                            
+                                $productexist = $this->model_catalog_product->addProduct($productdata);                                
+                           
+                        } 
+					
+			unset($_SESSION['productlist']);
+			$url = '';			
+			$this->response->redirect($this->url->link('catalog/product', 'token=' . $this->session->data['token'] . $url, 'SSL'));	
+	
+	}
+	
+	
+	}
+	
+    function getCell(&$worksheet, $row, $col, $default_val = '') {
+        $col -= 1; // we use 1-based, PHPExcel uses 0-based column index
+        $row += 1; // we use 0-based, PHPExcel used 1-based row index
+        return ($worksheet->cellExistsByColumnAndRow($col, $row)) ? $worksheet->getCellByColumnAndRow($col, $row)->getValue() : $default_val;
+    }
+	
+	
+	public function productsampleexport()
+	{
+		/* Include PHPExcel class */
+		//chdir('../system/library/PHPExcel');
+		//require_once( 'Classes/PHPExcel.php' );
+		//chdir('../../../admin');
+
+		require_once('../system/library/PHPExcel/Classes/PHPExcel.php' );
+		
+		// Instantiate a new PHPExcel object
+		$objPHPExcel = new PHPExcel(); 
+		// Set the active Excel worksheet to sheet 0
+		$objPHPExcel->setActiveSheetIndex(0); 
+		// Initialise the Excel row number
+		$rowCount = 1; 
+		
+		/* Add Heading Row */ 
+			$objPHPExcel->getActiveSheet()->SetCellValue('A'.$rowCount, 'Product Name'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('B'.$rowCount, 'Description'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('C'.$rowCount, 'meta_description'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('D'.$rowCount, 'meta_keyword');  		
+			$objPHPExcel->getActiveSheet()->SetCellValue('E'.$rowCount, 'tag');			
+			
+		    $objPHPExcel->getActiveSheet()->SetCellValue('F'.$rowCount, 'model');
+			$objPHPExcel->getActiveSheet()->SetCellValue('G'.$rowCount, 'store_id'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('H'.$rowCount, 'sku'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('I'.$rowCount, 'upc'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('J'.$rowCount, 'ean');  		
+			$objPHPExcel->getActiveSheet()->SetCellValue('K'.$rowCount, 'jan');
+			$objPHPExcel->getActiveSheet()->SetCellValue('L'.$rowCount, 'isbn'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('M'.$rowCount, 'mpn'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('N'.$rowCount, 'location');  		
+			$objPHPExcel->getActiveSheet()->SetCellValue('O'.$rowCount, 'quantity'); 						
+		    $objPHPExcel->getActiveSheet()->SetCellValue('P'.$rowCount, 'stock_status_id'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('Q'.$rowCount, 'product_image_path'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('R'.$rowCount, 'require_shipping'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('S'.$rowCount, 'price');  		
+			$objPHPExcel->getActiveSheet()->SetCellValue('T'.$rowCount, 'tax_class_id');
+			$objPHPExcel->getActiveSheet()->SetCellValue('U'.$rowCount, 'date_available'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('V'.$rowCount, 'weight'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('W'.$rowCount, 'weight_class_id');  		
+			$objPHPExcel->getActiveSheet()->SetCellValue('X'.$rowCount, 'length'); 			
+			$objPHPExcel->getActiveSheet()->SetCellValue('Y'.$rowCount, 'width'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('Z'.$rowCount, 'height'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('AA'.$rowCount, 'length_class_id'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('AB'.$rowCount, 'subtract');  		
+			$objPHPExcel->getActiveSheet()->SetCellValue('AC'.$rowCount, 'minimum');
+			$objPHPExcel->getActiveSheet()->SetCellValue('AD'.$rowCount, 'sort_order'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('AE'.$rowCount, 'viewed'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('AF'.$rowCount, 'points');  		
+			$objPHPExcel->getActiveSheet()->SetCellValue('AG'.$rowCount, 'status'); 			
+    
+			$objPHPExcel->getActiveSheet()->SetCellValue('AH'.$rowCount, 'Manufacturer Name'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('AI'.$rowCount, 'Category Name'); 			
+			$objPHPExcel->getActiveSheet()->SetCellValue('AJ'.$rowCount, 'Additional Image');		 			
+			
+			$objPHPExcel->getActiveSheet()->SetCellValue('AK'.$rowCount, 'Select Type'); 			
+			$objPHPExcel->getActiveSheet()->SetCellValue('AL'.$rowCount, 'Required');      
+			$objPHPExcel->getActiveSheet()->SetCellValue('AM'.$rowCount, 'Option Value'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('AN'.$rowCount, 'Quantity');       
+			$objPHPExcel->getActiveSheet()->SetCellValue('AO'.$rowCount, 'Subtrack stock');       
+			$objPHPExcel->getActiveSheet()->SetCellValue('AP'.$rowCount, 'Price');      
+			$objPHPExcel->getActiveSheet()->SetCellValue('AQ'.$rowCount, 'Price Prefix'); 			
+			$objPHPExcel->getActiveSheet()->SetCellValue('AR'.$rowCount, 'Ponits'); 
+			$objPHPExcel->getActiveSheet()->SetCellValue('AS'.$rowCount, 'Ponits Prdefix');
+            $objPHPExcel->getActiveSheet()->SetCellValue('AT'.$rowCount, 'Weight');
+			$objPHPExcel->getActiveSheet()->SetCellValue('AU'.$rowCount, 'weight Prefix');
+		
+			
+		header("Content-Type: text/csv; charset=utf-8");
+		header('Content-Disposition: attachment;filename="product_list_'.date("Y m d G i s").'.csv"'); 
+		//header('Content-Disposition: attachment;filename="category_list_'.date("Y m d G i s").'.xlsx"'); 
+		header('Cache-Control: max-age=0'); 
+			
+		// Instantiate a Writer to create an OfficeOpenXML Excel .xlsx file
+		//$objWriter = new PHPExcel_Writer_Excel2007($objPHPExcel);
+		$objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel,'CSV');
+		// Write the Excel file to filename some_excel_file.xlsx in the current directory
+		//$objWriter->save('some_excel_file.xlsx'); 
+		
+		/* Download CsV file in downloads */
+		$objWriter->save('php://output'); 
+					
+//        chdir('../../..');
+	}
+	protected function validateImport() {
+		 /*if (!$this->user->hasPermission('modify', 'sale/customer')) {
+				$this->error['warning'] = $this->language->get('error_permission');
+		}*/
+		if(!$_POST['opcversion']){
+	    	 $this->error['errorfile_opcversion'] = $this->language->get('Please Select upload Opencart version');
+       		 }
+		
+		if (!$this->request->files['file']['tmp_name']) {
+				$this->error['errorfile'] = $this->language->get('Please Upload a Excel/CSV file');
+		}
+		elseif($_FILES["file"]["name"])
+		{
+			$allowedExts = array("csv", "xlsx", "xls");
+			$temp = explode(".", $_FILES["file"]["name"]);
+			$extension = end($temp);
+			
+			if(!in_array($extension, $allowedExts))
+				$this->error['errorfile'] = $this->language->get('Please Upload a Excel/CSV file');	
+		}
+		
+		if (!$this->error) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+//export products
+public function products_export(){
+	 
+	 if (isset($this->request->get['filter_name'])) {
+			$filter_name = $this->request->get['filter_name'];
+		} else {
+			$filter_name = null;
+		}
+
+		if (isset($this->request->get['filter_model'])) {
+			$filter_model = $this->request->get['filter_model'];
+		} else {
+			$filter_model = null;
+		}
+
+		if (isset($this->request->get['filter_price'])) {
+			$filter_price = $this->request->get['filter_price'];
+		} else {
+			$filter_price = null;
+		}
+
+		if (isset($this->request->get['filter_quantity'])) {
+			$filter_quantity = $this->request->get['filter_quantity'];
+		} else {
+			$filter_quantity = null;
+		}
+
+		if (isset($this->request->get['filter_status'])) {
+			$filter_status = $this->request->get['filter_status'];
+		} else {
+			$filter_status = null;
+		}
+		
+		$filter_product_data = array(
+			'filter_name'	  => $filter_name, 
+			'filter_model'	  => $filter_model,
+			'filter_price'	  => $filter_price,
+			'filter_quantity' => $filter_quantity,
+			'filter_status'   => $filter_status
+		);
+		
+       $this->load->model('catalog/product');
+       $results = $this->model_catalog_product->getProducts($filter_product_data);
+	   
+       $product_list = array();
+	   $temp_count = 1;
+	   
+		foreach ($results as $result) { //print_r($results);exit;
+			//print_r($results);  
+		
+			/*$special = false;
+
+			$product_specials = $this->model_catalog_product->getProductSpecials($result['product_id']); 
+
+			foreach ($product_specials  as $product_special) {
+				if (($product_special['date_start'] == '0000-00-00' || $product_special['date_start'] < date('Y-m-d')) && ($product_special['date_end'] == '0000-00-00' || $product_special['date_end'] > date('Y-m-d'))) {
+					$special = $product_special['price'];
+
+					break;
+				}					
+			}	*/	
+			
+				    //$product_list[$temp_count]['product_id']  			= $result['product_id'];
+					$product_list[$temp_count]['name']        			= $result['name'];
+					$product_list[$temp_count]['description']    		= $this->cleanString($result['description']);
+					$product_list[$temp_count]['meta_description']      = $result['meta_description'];
+					$product_list[$temp_count]['meta_keyword']        	= $result['meta_keyword'];
+					$product_list[$temp_count]['tag']        			= $result['tag'];					
+					
+					$product_list[$temp_count]['model']       			= $result['model'];
+					$export_store_id = $this->model_catalog_product->getstoreID($result['product_id']);//print_r($export_store_id['store_id']);
+					$product_list[$temp_count]['product_store']       		= $export_store_id['store_id'];
+					$product_list[$temp_count]['sku']       			= $result['sku'];
+					$product_list[$temp_count]['upc']       			= $result['upc'];
+					$product_list[$temp_count]['ean']       			= $result['ean'];
+					$product_list[$temp_count]['jan']       			= $result['jan'];
+					$product_list[$temp_count]['isbn']       			= $result['isbn'];
+					$product_list[$temp_count]['mpn']       			= $result['mpn'];
+					$product_list[$temp_count]['location']       		= $result['location'];
+					$product_list[$temp_count]['quantity']       		= $result['quantity'];
+					
+					$export_OutOfStockName = $this->model_catalog_product->getOutOfStockName($result['stock_status_id']);
+					$product_list[$temp_count]['stock_status_id']       = $export_OutOfStockName;
+					$product_list[$temp_count]['product_image_path']	= $result['image'];
+					$product_list[$temp_count]['require_shipping']	    = ($result['shipping'] == 1 ? 'Yes' : 'No');
+					$product_list[$temp_count]['price']       			= $result['price'];
+					$product_list[$temp_count]['tax_class_id']          = $result['tax_class_id'];
+					$product_list[$temp_count]['date_available']       	= $result['date_available'];
+					$product_list[$temp_count]['weight']       			= $result['weight'];
+					$product_list[$temp_count]['weight_class_id']       = $result['weight_class_id'];
+					$product_list[$temp_count]['length']       			= $result['length'];
+					$product_list[$temp_count]['width']       			= $result['width'];
+					$product_list[$temp_count]['height']       			= $result['height'];
+					$product_list[$temp_count]['length_class_id']       = $result['length_class_id'];
+					$product_list[$temp_count]['subtract']       		= $result['subtract'];
+					$product_list[$temp_count]['minimum']       		= $result['minimum'];
+					$product_list[$temp_count]['sort_order']       		= $result['sort_order'];
+					$product_list[$temp_count]['viewed']       			= $result['viewed'];
+					$product_list[$temp_count]['points']       			= $result['points'];
+					$product_list[$temp_count]['status']      			= ($result['status'] ? $this->language->get('text_enabled') : $this->language->get('text_disabled'));
+
+				
+            //take manufacturer name.........
+			    $export_get_manufacturer_id = $this->model_catalog_product->export_getmanufacturerid($result['manufacturer_id']); 
+				
+			if(!empty($export_get_manufacturer_id)){
+				
+				foreach($export_get_manufacturer_id as $export_get_manufacturer_name){			
+					
+			    $product_list[$temp_count]['manufacturer_name']  = $export_get_manufacturer_name;	
+				 				
+					
+				}
+			}
+			else
+			{
+				
+				$product_list[$temp_count]['manufacturer_name']  = '';
+			}
+				
+			//take category name	.........
+				$export_get_category_id = $this->model_catalog_product->export_getcategoryid($result['product_id']);				
+			    $temp=array();
+				$export_get_category_name=array();
+				  
+			   foreach($export_get_category_id as $export_get_category_id1){
+			   	 					  	
+						$export_get_category_name[] = $this->model_catalog_product->export_getcategory_name($export_get_category_id1['category_id']);
+				   
+               }
+				
+			   foreach ($export_get_category_name as $export_get_category_name1) {				 	
+						  	
+							$temp[]=$export_get_category_name1['name'];
+						  	
+			   }	
+				
+			   $category_name = implode(',',$temp);
+			   
+			   $product_list[$temp_count]['category_name']    	= (isset($category_name) ? $category_name : ""); 
+				
+
+              //take additional image for products......
+              $temp_image=array();			  
+			  
+              $export_get_additional_image_path = $this->model_catalog_product->export_getimagepath($result['product_id']);	 
+			 $additional_image_path ="";
+			  foreach ($export_get_additional_image_path as $export_get_additional_image_path1) {
+	
+			  	    $temp_image[]=$export_get_additional_image_path1['image'];
+			      
+	                $additional_image_path = implode(',',$temp_image);
+				
+			  }
+			  $product_list[$temp_count]['additional_image_path']    	= $additional_image_path;
+			  
+			
+				
+			//take product option value	.....
+			
+			$export_get_option_details = $this->model_catalog_product->export_getoption_details($result['product_id']);
+			//print_r($export_get_option_details);exit;
+		 $option_temp=0;
+		 foreach ($export_get_option_details as $getproduct_option_name1) { //start loop2
+			     	
+					
+			     	
+				 	if($option_temp==0){
+					
+					 $product_list[$temp_count]['option_type'] = $getproduct_option_name1['name'];
+					 $product_list[$temp_count]['required'] = ($getproduct_option_name1['required'] == 1 ? 'Yes' : 'No');
+	
+					}
+					else{
+												
+		   			//$product_list[$temp_count]['product_id']  			= '';
+				        $product_list[$temp_count]['name']        			= '';
+					$product_list[$temp_count]['description']    		= '';	
+					$product_list[$temp_count]['meta_description']      = '';
+					$product_list[$temp_count]['meta_keyword']        	= '';
+					$product_list[$temp_count]['tag']        			= '';			
+					
+					$product_list[$temp_count]['model']       			= '';
+					$product_list[$temp_count]['product_store']       	= '';
+					$product_list[$temp_count]['sku']       			= '';
+					$product_list[$temp_count]['upc']       			= '';
+					$product_list[$temp_count]['ean']       			= '';
+					$product_list[$temp_count]['jan']       			= '';
+					$product_list[$temp_count]['isbn']       			= '';
+					$product_list[$temp_count]['mpn']       			= '';
+					$product_list[$temp_count]['location']       		= '';
+					$product_list[$temp_count]['quantity']       		= '';
+					$product_list[$temp_count]['stock_status_id']       = '';
+					$product_list[$temp_count]['product_image_path']	= '';
+					$product_list[$temp_count]['require_shipping']	    = '';
+					$product_list[$temp_count]['price']       			= '';
+					$product_list[$temp_count]['tax_class_id']          = '';
+					$product_list[$temp_count]['date_available']       	= '';
+					$product_list[$temp_count]['weight']       			= '';
+					$product_list[$temp_count]['weight_class_id']       = '';
+					$product_list[$temp_count]['length']       			= '';
+					$product_list[$temp_count]['width']       			= '';
+					$product_list[$temp_count]['height']       			= '';
+					$product_list[$temp_count]['length_class_id']       = '';
+					$product_list[$temp_count]['subtract']       		= '';
+					$product_list[$temp_count]['minimum']       		= '';
+					$product_list[$temp_count]['sort_order']       		= '';
+					$product_list[$temp_count]['viewed']       			= '';
+					$product_list[$temp_count]['points']       			= '';
+					$product_list[$temp_count]['status']      			='';
+					
+					$product_list[$temp_count]['manufacturer_name']  = '';
+					$product_list[$temp_count]['category_name']    	= '';
+					$product_list[$temp_count]['additional_image_path']    	= '';					
+					$product_list[$temp_count]['option_type'] = $getproduct_option_name1['name'];					
+					$product_list[$temp_count]['required'] = ($getproduct_option_name1['required'] == 1 ? 'Yes' : 'No');
+					
+					}
+					
+					
+					
+					$t1=0;
+					if(!empty($getproduct_option_name1['product_option_value'])){
+					     	foreach ($getproduct_option_name1['product_option_value'] as $getproduct_option_value1) {
+							
+							 
+								 if($t1==0){
+								 		
+								 	         $product_list[$temp_count]['option_value'] = $getproduct_option_value1['option_value_name'];
+											 $product_list[$temp_count]['option_value_quantity'] = $getproduct_option_value1['quantity'];
+											 $product_list[$temp_count]['option_value_subtract'] = ($getproduct_option_value1['subtract']==1 ? 'Yes' : 'No');
+											 $product_list[$temp_count]['option_value_price'] = $getproduct_option_value1['price'];
+											 $product_list[$temp_count]['option_value_price_prefix'] = $getproduct_option_value1['price_prefix'];
+											 $product_list[$temp_count]['option_value_points'] = $getproduct_option_value1['points'];
+											 $product_list[$temp_count]['option_value_points_prefix'] = $getproduct_option_value1['points_prefix'];
+											 $product_list[$temp_count]['option_value_weight'] = $getproduct_option_value1['weight'];
+											 $product_list[$temp_count]['option_value_weight_prefix'] = $getproduct_option_value1['weight_prefix'];
+									            
+									 }
+									 else{
+									            //$product_list[$temp_count]['product_id']  			= '';
+											    $product_list[$temp_count]['name']        			= '';
+												$product_list[$temp_count]['description']    		= '';
+												$product_list[$temp_count]['meta_description']      = $result['meta_description'];
+												$product_list[$temp_count]['meta_keyword']        	= $result['meta_keyword'];
+												$product_list[$temp_count]['tag']        			= $result['tag'];
+											
+												
+												$product_list[$temp_count]['model']       			= '';
+												$product_list[$temp_count]['product_store']       	= '';
+												$product_list[$temp_count]['sku']       			= '';
+												$product_list[$temp_count]['upc']       			= '';
+												$product_list[$temp_count]['ean']       			= '';
+												$product_list[$temp_count]['jan']       			= '';
+												$product_list[$temp_count]['isbn']       			= '';
+												$product_list[$temp_count]['mpn']       			= '';
+												$product_list[$temp_count]['location']       		= '';
+												$product_list[$temp_count]['quantity']       		= '';
+												$product_list[$temp_count]['stock_status_id']       = '';
+												$product_list[$temp_count]['product_image_path']	= '';
+												$product_list[$temp_count]['require_shipping']	    = '';
+												$product_list[$temp_count]['price']       			= '';
+												$product_list[$temp_count]['tax_class_id']          = '';
+												$product_list[$temp_count]['date_available']       	= '';
+												$product_list[$temp_count]['weight']       			= '';
+												$product_list[$temp_count]['weight_class_id']       = '';
+												$product_list[$temp_count]['length']       			= '';
+												$product_list[$temp_count]['width']       			= '';
+												$product_list[$temp_count]['height']       			= '';
+												$product_list[$temp_count]['length_class_id']       = '';
+												$product_list[$temp_count]['subtract']       		= '';
+												$product_list[$temp_count]['minimum']       		= '';
+												$product_list[$temp_count]['sort_order']       		= '';
+												$product_list[$temp_count]['viewed']       			= '';
+												$product_list[$temp_count]['points']       			= '';
+												$product_list[$temp_count]['status']      			='';
+					
+												
+												$product_list[$temp_count]['manufacturer_name']  = '';
+												$product_list[$temp_count]['category_name']    	= '';
+												$product_list[$temp_count]['additional_image_path']    	= '';												
+												$product_list[$temp_count]['option_type'] = '';
+												$product_list[$temp_count]['required'] = '';
+					
+								 	             $product_list[$temp_count]['option_value'] = $getproduct_option_value1['option_value_name'];
+												 $product_list[$temp_count]['option_value_quantity'] = $getproduct_option_value1['quantity'];
+												 $product_list[$temp_count]['option_value_subtract'] = ($getproduct_option_value1['subtract']==1 ? 'Yes' : 'No');
+												 $product_list[$temp_count]['option_value_price'] = $getproduct_option_value1['price'];
+												 $product_list[$temp_count]['option_value_price_prefix'] = $getproduct_option_value1['price_prefix'];
+												 $product_list[$temp_count]['option_value_points'] = $getproduct_option_value1['points'];
+												 $product_list[$temp_count]['option_value_points_prefix'] = $getproduct_option_value1['points_prefix'];
+												 $product_list[$temp_count]['option_value_weight'] = $getproduct_option_value1['weight'];
+												 $product_list[$temp_count]['option_value_weight_prefix'] = $getproduct_option_value1['weight_prefix'];
+									         
+											
+									     }								
+							 
+							 $t1++;$temp_count++;
+				         }
+						 
+                     }
+                      
+$option_temp++;$temp_count++;
+					}
+					
+$temp_count++;
+				}	
+									
+			//print_r($product_list);exit;						
+						$products_data = array();
+						
+						$products_column=array();
+						
+						$products_column = array('Product Name', 'Product Description','Meta Description','Meta Keyword','Tag', 'Model', 'Store_id','sku','upc','ean','jan','isbn','mpn','location','quantity','stock_status_id','image','Require shipping','price','tax_class_id','date_available','weight','weight_class_id','length','width','height','length_class_id','subtract','minimum','sort_order','viewed','Points','Status', 'Manufacturer Name', 'Category Name','Additional Image','Select Type','Required','Option Value','Quantity','Subtrack stock','Price','Price Prefix','Ponits','Ponits Prdefix','Weight','weight Prefix');
+						//$products_column = array('Product ID', 'Product Name',  'Model', 'Price', 'Quantity', 'Require Shipping', 'Image', 'Manufacturer Name', 'Category Name');
+							
+						$products_data[0]=   $products_column;   
+						
+						foreach($product_list as $products_row)
+						{
+							$products_data[]=   $products_row;            
+						} 		
+
+
+				        header( 'Content-Type: text/csv' );
+				        header( 'Content-Disposition: attachment;filename="product_list_'.date("Y m d G i s").'.csv"');
+						$out = fopen('php://output', 'w');
+				
+						foreach ($products_data as $fields) {
+						    fputcsv($out, $fields);
+						}
+						
+						fclose($out);
+	
+
+					
+}
+public function cleanString($text) {
+						// 1) convert á ô => a o
+						$text = preg_replace("/[áàâãªä]/u","a",$text);
+						$text = preg_replace("/[ÁÀÂÃÄ]/u","A",$text);
+						$text = preg_replace("/[ÍÌÎÏ]/u","I",$text);
+						$text = preg_replace("/[íìîï]/u","i",$text);
+						$text = preg_replace("/[éèêë]/u","e",$text);
+						$text = preg_replace("/[ÉÈÊË]/u","E",$text);
+						$text = preg_replace("/[óòôõºö]/u","o",$text);
+						$text = preg_replace("/[ÓÒÔÕÖ]/u","O",$text);
+						$text = preg_replace("/[úùûü]/u","u",$text);
+						$text = preg_replace("/[ÚÙÛÜ]/u","U",$text);
+						$text = preg_replace("/[’‘‹›‚]/u","'",$text);
+						$text = preg_replace("/[“”«»„]/u",'"',$text);
+						$text = str_replace("–","-",$text);
+						$text = str_replace(" "," ",$text);
+						$text = str_replace("ç","c",$text);
+						$text = str_replace("Ç","C",$text);
+						$text = str_replace("ñ","n",$text);
+						$text = str_replace("Ñ","N",$text);
+					 
+						//2) Translation CP1252. &ndash; => -
+						$trans = get_html_translation_table(HTML_ENTITIES); 
+						$trans[chr(130)] = '&sbquo;';    // Single Low-9 Quotation Mark 
+						$trans[chr(131)] = '&fnof;';    // Latin Small Letter F With Hook 
+						$trans[chr(132)] = '&bdquo;';    // Double Low-9 Quotation Mark 
+						$trans[chr(133)] = '&hellip;';    // Horizontal Ellipsis 
+						$trans[chr(134)] = '&dagger;';    // Dagger 
+						$trans[chr(135)] = '&Dagger;';    // Double Dagger 
+						$trans[chr(136)] = '&circ;';    // Modifier Letter Circumflex Accent 
+						$trans[chr(137)] = '&permil;';    // Per Mille Sign 
+						$trans[chr(138)] = '&Scaron;';    // Latin Capital Letter S With Caron 
+						$trans[chr(139)] = '&lsaquo;';    // Single Left-Pointing Angle Quotation Mark 
+						$trans[chr(140)] = '&OElig;';    // Latin Capital Ligature OE 
+						$trans[chr(145)] = '&lsquo;';    // Left Single Quotation Mark 
+						$trans[chr(146)] = '&rsquo;';    // Right Single Quotation Mark 
+						$trans[chr(147)] = '&ldquo;';    // Left Double Quotation Mark 
+						$trans[chr(148)] = '&rdquo;';    // Right Double Quotation Mark 
+						$trans[chr(149)] = '&bull;';    // Bullet 
+						$trans[chr(150)] = '&ndash;';    // En Dash 
+						$trans[chr(151)] = '&mdash;';    // Em Dash 
+						$trans[chr(152)] = '&tilde;';    // Small Tilde 
+						$trans[chr(153)] = '&trade;';    // Trade Mark Sign 
+						$trans[chr(154)] = '&scaron;';    // Latin Small Letter S With Caron 
+						$trans[chr(155)] = '&rsaquo;';    // Single Right-Pointing Angle Quotation Mark 
+						$trans[chr(156)] = '&oelig;';    // Latin Small Ligature OE 
+						$trans[chr(159)] = '&Yuml;';    // Latin Capital Letter Y With Diaeresis 
+						$trans['euro'] = '&euro;';    // euro currency symbol 
+						ksort($trans); 
+						 
+						foreach ($trans as $k => $v) {
+							$text = str_replace($v, $k, $text);
+						}
+					 
+						// 3) remove <p>, <br/> ...
+						$text = strip_tags($text); 
+						 
+						// 4) &amp; => & &quot; => '
+						$text = html_entity_decode($text);
+						 
+						// 5) remove Windows-1252 symbols like "TradeMark", "Euro"...
+						$text = preg_replace('/[^(\x20-\x7F)]*/','', $text); 
+						 
+						$targets=array('\r\n','\n','\r','\t');
+						$results=array(" "," "," ","");
+						$text = str_replace($targets,$results,$text);
+					 
+						//XML compatible
+						/*
+						$text = str_replace("&", "and", $text);
+						$text = str_replace("<", ".", $text);
+						$text = str_replace(">", ".", $text);
+						$text = str_replace("\\", "-", $text);
+						$text = str_replace("/", "-", $text);
+						*/
+						 
+						return ($text);
+					}
+]]></add>
+        </operation>
+</file>
+<file path="admin/model/catalog/product.php">
+        <operation>
+            <search position="before"><![CDATA[public function editProduct($product_id, $data) {]]></search>
+            <add><![CDATA[public function getImportManufacturerId($manufacturer_name) {
+		$query = $this->db->query("SELECT manufacturer_id FROM " . DB_PREFIX . "manufacturer WHERE name LIKE '" . $manufacturer_name . "'");
+        if($query->row)
+            return $query->row['manufacturer_id'];
+        else
+            return '';
+	}
+	
+	public function getImportCategoryId($explode_product_category1) {
+		$query = $this->db->query("SELECT category_id FROM " . DB_PREFIX . "category_description WHERE name LIKE '" . $explode_product_category1 . "'");
+        if($query->row)
+            return $query->row['category_id'];
+        else
+            return '';
+	}
+	public function getOptionId($option_type) {
+		$query = $this->db->query("SELECT option_id FROM " . DB_PREFIX . "option_description WHERE name LIKE '" . $option_type . "'");
+        if($query->row)
+            return $query->row['option_id'];
+        else
+            return '';
+	}
+	public function getOptionTypeId($get_option_id) {
+		$query = $this->db->query("SELECT type FROM " . DB_PREFIX . "option WHERE option_id = '" . $get_option_id . "'");
+        if($query->row)
+            return $query->row['type'];
+        else
+            return '';
+	}
+	public function getOptionValueId($option_value) {
+		$query = $this->db->query("SELECT option_value_id FROM " . DB_PREFIX . "option_value_description WHERE name LIKE '" . $option_value . "'");
+        if($query->row)
+            return $query->row['option_value_id'];
+        else
+            return '';
+	}
+	public function getStockStatusId($stock_status_name) {
+		$query = $this->db->query("SELECT stock_status_id FROM " . DB_PREFIX . "stock_status WHERE name LIKE '" . $stock_status_name . "'");
+        if($query->row)
+            return $query->row['stock_status_id'];
+        else
+            return '';
+	}
+
+//export product functions
+public function export_getmanufacturerid($manufacturer_id) {
+		$query = $this->db->query("SELECT name FROM " . DB_PREFIX . "manufacturer WHERE manufacturer_id = '" . (int)$manufacturer_id . "'");
+
+		return $query->row;
+	}
+	
+		public function export_getcategoryid($product_id) {
+		$query = $this->db->query("SELECT category_id FROM " . DB_PREFIX . "product_to_category WHERE product_id = '" . (int)$product_id . "'");
+
+		return $query->rows;
+	}
+		
+		public function export_getcategory_name($export_get_category_id2) {
+		$query = $this->db->query("SELECT name FROM " . DB_PREFIX . "category_description WHERE category_id = '" . (int)$export_get_category_id2 . "'");
+
+		return $query->row;
+	}
+		
+		public function export_getimagepath($product_id) {
+		$query = $this->db->query("SELECT image FROM " . DB_PREFIX . "product_image WHERE product_id = '" . (int)$product_id . "'");
+
+		return $query->rows;
+	}
+		
+	
+		public function export_getoption_details($get_product_id) {
+		$query = $this->db->query("SELECT * FROM " . DB_PREFIX . "product_option po LEFT JOIN " . DB_PREFIX . "option o ON(o.option_id=po.option_id) LEFT JOIN " . DB_PREFIX . "option_description od ON(o.option_id=od.option_id) WHERE po.product_id = '" . (int)$get_product_id . "'");
+		//print_r($query->rows);
+		$product_option_data=array();
+		
+		foreach ($query->rows as $product_option) {
+			
+			$product_option_value_query = $this->db->query("SELECT * FROM " . DB_PREFIX . "product_option_value pov LEFT JOIN " . DB_PREFIX . "option_value ov ON(ov.option_value_id=pov.option_value_id) LEFT JOIN " . DB_PREFIX . "option_value_description ovd ON(ov.option_value_id=ovd.option_value_id) WHERE pov.product_option_id = '" . (int)$product_option['product_option_id'] . "'");
+		$product_option_value_data=array();
+		foreach ($product_option_value_query->rows as $product_option_value) {
+				$product_option_value_data[] = array(
+					'product_option_value_id' => $product_option_value['product_option_value_id'],
+					'option_value_id'         => $product_option_value['option_value_id'],
+					'option_value_name'       => $product_option_value['name'],
+					'quantity'                => $product_option_value['quantity'],
+					'subtract'                => $product_option_value['subtract'],
+					'price'                   => $product_option_value['price'],
+					'price_prefix'            => $product_option_value['price_prefix'],
+					'points'                  => $product_option_value['points'],
+					'points_prefix'           => $product_option_value['points_prefix'],						
+					'weight'                  => $product_option_value['weight'],
+					'weight_prefix'           => $product_option_value['weight_prefix']					
+				);
+			}
+
+			$product_option_data[] = array(
+				'product_option_id'    => $product_option['product_option_id'],
+				'option_id'            => $product_option['option_id'],
+				'name'                 => $product_option['name'],
+				'type'                 => $product_option['type'],			
+				'product_option_value' => $product_option_value_data,
+				'option_value'         => $product_option['value'],
+				'required'             => $product_option['required']	
+			
+			);
+		}
+
+		return $product_option_data;
+	}
+
+        public function getOutOfStockName($stock_status_id) {
+		$query = $this->db->query("SELECT name FROM " . DB_PREFIX . "stock_status WHERE stock_status_id = '" . (int)$stock_status_id . "'");
+        if($query->row)
+            return $query->row['name'];
+        else
+            return '';
+	}
+	
+	public function getstoreID($product_id) {
+		$query = $this->db->query("SELECT store_id FROM " . DB_PREFIX . "product_to_store WHERE product_id = '" . (int)$product_id . "'");
+
+		return $query->row;
+	}
+		
+]]></add>
+        </operation>
+</file>
+<file path="admin/view/template/catalog/product_list.tpl">
+        <operation>
+            <search position="replace"><![CDATA[<div class="pull-right"><a href="<?php echo $add; ?>" data-toggle="tooltip" title="<?php echo $button_add; ?>" class="btn btn-primary"><i class="fa fa-plus"></i></a>]]></search>
+            <add><![CDATA[<div class="pull-right"><a href="<?php echo $import; ?>" data-toggle="tooltip" title="<?php echo $button_import; ?>" class="btn btn-success"><i class="fa fa-arrow-down"></i></a><a href="<?php echo $export; ?>" data-toggle="tooltip" title="<?php echo "Export"; ?>" class="btn btn-success"><i class="fa fa-arrow-up"></i></a><a href="<?php echo $add; ?>" data-toggle="tooltip" title="<?php echo $button_add; ?>" class="btn btn-primary"><i class="fa fa-plus"></i></a>]]></add>
+        </operation>
+</file>
+</modification>
+

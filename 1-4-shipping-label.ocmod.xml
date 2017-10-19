@@ -1,0 +1,19 @@
+<modification>
+	<name>1-4 Business days</name>
+	<id>1-4Businessdays</id>
+	<version>0.1</version>
+	<code>Tanveer 1-4 Business days</code>
+	<author>Tanveer Yousuf</author>
+
+	<file path="catalog/language/en-gb/checkout/checkout.php">    
+		<operation error="log">
+			<search position="replace"><![CDATA[$_['text_shipping_method']           = 'Please select the preferred shipping method to use on this order.';]]></search>
+			<add><![CDATA[
+			///xml///
+			 $_['text_shipping_method']= '<strong>Same city orders will be delivered within 1-4 days otherwise 4-8 days.</strong></p>';
+			///xml///
+			]]></add>
+		</operation> 
+			
+	</file>
+</modification>

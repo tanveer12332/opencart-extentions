@@ -1,0 +1,144 @@
+<modification>
+	<name>Extra Field Code in Manufacturer</name>
+	<id>Extra-Field-Code-in-Manufacturer</id>
+	<version>0.1</version>
+	<code>Tanveer Extra-Field-Code-in-Manufacturer</code>
+	<author>Tanveer Yousuf</author>
+
+	<file path="admin/view/template/catalog/manufacturer_form.tpl">    
+		<operation error="log">
+			<search><![CDATA[<form action="<?php echo $action; ?>" method="post" enctype="multipart/form-data" id="form-manufacturer" class="form-horizontal">]]></search>
+			<add position="after" offset="9"><![CDATA[
+			<!--code-->
+			   <div class="form-group required">
+				<label class="col-sm-2 control-label" for="input-code"><?php echo $entry_code; ?></label>
+				<div class="col-sm-10">
+				  <input type="text" name="code" value="<?php echo $code; ?>" placeholder="<?php echo $entry_code; ?>" id="input-code" class="form-control" />
+				  <?php if ($error_code) { ?>
+				  <div class="text-danger"><?php echo $error_code; ?></div>
+				  <?php } ?>
+				</div>
+			  </div>
+		   <!--end-->
+			]]></add>
+		</operation> 
+	
+	</file>
+	
+	<file path="admin/language/*/catalog/manufacturer.php">    
+		<operation error="log">
+			<search><![CDATA[// text]]></search>
+			<add  position="after"><![CDATA[
+			//extra filed code
+				$_['entry_code']         = 'Code';
+				$_['error_code']         = 'Manufacturer Code must be between 2 and 64!';
+			]]></add>
+		</operation> 
+	
+	</file>
+	
+	<file path="admin/controller/catalog/manufacturer.php">    
+		<operation error="log">
+			<search><![CDATA[$data['manufacturers'][] = array(]]></search>
+			<add  position="after" offset="2"><![CDATA[
+			'code'            => $result['code'],
+			]]></add>
+		</operation> 
+		<operation error="log">
+			<search><![CDATA[$data['entry_name'] = $this->language->get('entry_name');]]></search>
+			<add  position="after"><![CDATA[
+			//code
+				$data['entry_code'] = $this->language->get('entry_code');
+			//end
+			]]></add>
+		</operation> 
+
+		<operation error="log">
+			<search><![CDATA[if (isset($this->error['name'])) {]]></search>
+			<add  position="after" offset="5"><![CDATA[
+			//code 
+				if (isset($this->error['code'])) {
+					$data['error_code'] = $this->error['code'];
+				} else {
+					$data['error_code'] = '';
+				}
+			//end
+			]]></add>
+		</operation>
+		<operation error="log">
+			<search><![CDATA[if (isset($this->request->post['keyword'])) {]]></search>
+			<add  position="after" offset="6"><![CDATA[
+			//code
+				if (isset($this->request->post['code'])) {
+					$data['code'] = $this->request->post['code'];
+				} elseif (!empty($manufacturer_info)) {
+					$data['code'] = $manufacturer_info['code'];
+				} else {
+					$data['code'] = '';
+				}
+			//end
+			]]></add>
+		</operation>
+		<operation error="log">
+			<search><![CDATA[if ((utf8_strlen($this->request->post['name']) < 2) || (utf8_strlen($this->request->post['name']) > 64)) {]]></search>
+			<add  position="after" offset="2"><![CDATA[
+			//code
+				if ((utf8_strlen($this->request->post['code']) < 2) || (utf8_strlen($this->request->post['code']) > 64)) {
+					$this->error['code'] = $this->language->get('error_code');
+				}
+			//end
+			]]></add>
+		</operation> 
+		<operation error="log">
+			<search><![CDATA[$manufacturer_total = $this->model_catalog_manufacturer->getTotalManufacturers();]]></search>
+			<add position="after"><![CDATA[
+			//new colums function
+			
+				$this->model_catalog_manufacturer->checkFieldModelChoice();
+			//end
+			]]></add>
+		</operation> 
+	
+	</file>
+	
+	<file path="admin/model/catalog/manufacturer.php">    
+		<operation error="log">
+			<search><![CDATA[public function getTotalManufacturers() {]]></search>
+			<add  position="before"><![CDATA[
+			//code
+				public function checkFieldModelChoice() {
+					$hasModelChoiceField = FALSE;
+					$result = $this->db->query( "DESCRIBE `".DB_PREFIX."manufacturer`;" );
+					foreach ($result->rows as $row) {
+						if ($row['Field'] == 'code') {
+							$hasModelChoiceField = TRUE;
+							break;
+						}
+					}
+					if (!$hasModelChoiceField) {
+						 $sql = "ALTER TABLE `".DB_PREFIX."manufacturer` ADD `code` VARCHAR( 255 ) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL DEFAULT''";
+						 $this->db->query( $sql );
+					}
+				}
+			//end
+			]]></add>
+		</operation>
+		
+		<operation error="log">
+			<search position="replace"><![CDATA[$this->db->query("INSERT INTO " . DB_PREFIX . "manufacturer SET name = '" . $this->db->escape($data['name']) . "', sort_order = '" . (int)$data['sort_order'] . "'");]]></search>
+			<add><![CDATA[
+			$this->db->query("INSERT INTO " . DB_PREFIX . "manufacturer SET code = '" . $this->db->escape($data['code']) . "' , name = '" . $this->db->escape($data['name']) . "', sort_order = '" . (int)$data['sort_order'] . "'");
+			]]></add>
+		</operation> 
+		
+		<operation error="log">
+			<search position="replace"><![CDATA[$this->db->query("UPDATE " . DB_PREFIX . "manufacturer SET name = '" . $this->db->escape($data['name']) . "', sort_order = '" . (int)$data['sort_order'] . "' WHERE manufacturer_id = '" . (int)$manufacturer_id . "'");]]></search>
+			<add><![CDATA[
+			$this->db->query("UPDATE " . DB_PREFIX . "manufacturer SET code = '" . $this->db->escape($data['code']) . "' , name = '" . $this->db->escape($data['name']) . "', sort_order = '" . (int)$data['sort_order'] . "' WHERE manufacturer_id = '" . (int)$manufacturer_id . "'");
+			]]></add>
+		</operation> 
+	
+	</file>
+</modification>
+
+

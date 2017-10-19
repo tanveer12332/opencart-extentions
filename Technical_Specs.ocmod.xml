@@ -1,0 +1,23 @@
+<modification>
+	<name>Tanveer2 Tab</name>
+	<id>Tanveer2 Custom Tab</id>
+	<version>2.x.x.x</version>
+	<code>Tanveer Custom Tab</code>
+	<author>Tanveer1(opencartextensions.in)</author>
+	<link>http://opencartextensions.in/</link>
+	
+	<file path="catalog/view/theme/*/template/product/product.tpl">    
+		<operation error="log">
+			<search><![CDATA[<li><a href="#tab-review" data-toggle="tab"><?php echo $tab_review; ?></a></li>]]></search>
+			<add position="after" offset="1"><![CDATA[
+			<!--xml-->
+			 <li><a href="#tab-Custom-Tab" data-toggle="tab">Tanver Custom Tab</a></li>
+			<!--xml-->
+			]]></add>
+		</operation> 
+			
+	</file>
+	
+	
+	
+</modification>

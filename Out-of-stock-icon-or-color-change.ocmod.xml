@@ -1,0 +1,29 @@
+<modification>
+	<name>Out of stock icon or color change</name>
+	<id>Out-of-stock-icon-or-color-change</id>
+	<version>0.1</version>
+	<code>Tanveer Out-of-stock-icon-or-color-change</code>
+	<author>Tanveer Yousuf</author>
+
+	<file path="catalog/view/theme/*/template/product/product.tpl">    
+		<operation error="log">
+			<search position="replace"><![CDATA[ <?php if ($stock) { ?>]]></search>
+			<add><![CDATA[
+			
+			  <?php if ($stock == "Out Of Stock") { ?>
+		
+			]]></add>
+		</operation> 
+			<operation error="log">
+			<search position="replace"><![CDATA[ <li><span class="check-box text-primary"><i class="fa fa-check"></i></span><?php echo $text_stock; ?><?php echo $stock; ?></li>]]></search>
+			<add><![CDATA[
+			  <li style="color:red"><span class="check-box text-primary"><i class="fa fa-times red"></i></span><?php echo $text_stock; ?><?php echo $stock; ?></li>
+			   <?php } else { ?>
+							<li><span class="check-box text-primary"><i class="fa fa-check"></i></span><?php echo $text_stock; ?><?php echo $stock; ?></li>
+		
+			]]></add>
+		</operation> 
+	</file>
+</modification>
+
+

@@ -1,0 +1,139 @@
+<modification>
+	<id>Xero</id>
+	<version>OC 1.5</version>
+	<vqmver>2.0.0</vqmver>
+	<author>Equotix</author>
+	<file name="catalog/model/account/customer.php">
+		<operation>
+			<search position="after"><![CDATA[
+				$customer_id = $this->db->getLastId();
+			]]></search>
+			<add><![CDATA[
+				$this->load->model('extension/xero');
+				
+				$data['customer_id'] = $customer_id;
+				
+				$this->model_extension_xero->exportCustomer($data);
+			]]></add>
+		</operation>
+		<operation>
+			<search position="after"><![CDATA[
+				public function editCustomer
+			]]></search>
+			<add><![CDATA[
+				$this->load->model('extension/xero');
+				
+				$data['customer_id'] = $this->customer->getId();
+				
+				$this->model_extension_xero->exportCustomer($data);
+			]]></add>
+		</operation>
+	</file>
+	<file name="admin/model/sale/customer.php">
+		<operation>
+			<search position="after"><![CDATA[
+				$customer_id = $this->db->getLastId();
+			]]></search>
+			<add><![CDATA[
+				$this->load->model('extension/xero'); 
+				
+				$data['customer_id'] = $customer_id;
+				
+				$this->model_extension_xero->exportCustomer($data);
+			]]></add>
+		</operation>
+		<operation>
+			<search position="after"><![CDATA[
+				public function editCustomer
+			]]></search>
+			<add><![CDATA[
+				$this->load->model('extension/xero');
+				
+				$data['customer_id'] = $customer_id;
+				
+				$this->model_extension_xero->exportCustomer($data);
+			]]></add>
+		</operation>
+	</file>
+	<file name="admin/controller/common/header.php">
+		<operation>
+			<search position="after"><![CDATA[
+				$this->data['affiliate']
+			]]></search>
+			<add><![CDATA[
+				$this->data['text_xero'] = $this->language->get('text_xero');
+				$this->data['xero'] = $this->url->link('extension/xero', 'token=' . $this->session->data['token'], 'SSL');
+			]]></add>
+		</operation>
+	</file>
+	<file name="admin/language/english/common/header.php">
+		<operation>
+			<search position="before"><![CDATA[
+				?>
+			]]></search>
+			<add><![CDATA[
+				$_['text_xero'] = 'Xero';
+			]]></add>
+		</operation>
+	</file>
+	<file name="admin/view/template/common/header.tpl">
+		<operation>
+			<search position="after"><![CDATA[
+				<li><a href="<?php echo $feed; ?>"><?php echo $text_feed; ?></a></li>
+			]]></search>
+			<add><![CDATA[
+				<li><a href="<?php echo $xero; ?>"><?php echo $text_xero; ?></a></li>
+			]]></add>
+		</operation>
+	</file>
+	<file name="admin/model/sale/order.php">
+		<operation>
+			<search position="after"><![CDATA[
+				function editOrder($order_id, $data) {
+			]]></search>
+			<add><![CDATA[
+				$this->db->query("UPDATE `" . DB_PREFIX . "order` SET xero_exported = '0' WHERE order_id = '" . (int)$order_id . "'");
+			]]></add>
+		</operation>
+		<operation>
+			<search position="after"><![CDATA[
+				function deleteOrder($order_id) {
+			]]></search>
+			<add><![CDATA[
+				$this->load->model('extension/xero');
+				
+				$order_query = $this->db->query("SELECT * FROM `" . DB_PREFIX . "order` WHERE order_status_id > '0' AND order_id = '" . (int)$order_id . "'");
+				
+				if ($order_query->num_rows) {
+					$this->model_extension_xero->exportOrder($order_query->row, true);
+				}
+			]]></add>
+		</operation>
+		<operation>
+			<search position="after"><![CDATA[
+				function addOrderHistory($order_id, $data) {
+			]]></search>
+			<add><![CDATA[
+				$this->db->query("UPDATE `" . DB_PREFIX . "order` SET xero_exported = '0' WHERE order_id = '" . (int)$order_id . "'");
+			]]></add>
+		</operation>
+	</file>
+	<file name="catalog/model/checkout/order.php">
+		<operation>
+			<search position="after"><![CDATA[
+				function confirm(
+			]]></search>
+			<add><![CDATA[
+				$this->db->query("UPDATE `" . DB_PREFIX . "order` SET xero_exported = '0' WHERE order_id = '" . (int)$order_id . "'");
+			]]></add>
+		</operation>
+		<operation>
+			<search position="after"><![CDATA[
+				function update(
+			]]></search>
+			<add><![CDATA[
+				$this->db->query("UPDATE `" . DB_PREFIX . "order` SET xero_exported = '0' WHERE order_id = '" . (int)$order_id . "'");
+			]]></add>
+		</operation>
+	</file>
+</modification>
